@@ -1,8 +1,13 @@
-import { MainLayout } from './components/MainLayout';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AppShell } from './components/AppShell';
 
 function App() {
   return (
-    <MainLayout />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/*" element={<AppShell />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
