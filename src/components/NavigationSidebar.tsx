@@ -3,7 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import {
   LayoutDashboard, Stethoscope, FlaskConical, FileText,
   ClipboardList, History, Settings, PanelLeftClose, PanelLeft,
-  Activity, Search, LogOut
+  Activity, Search, LogOut, Moon, Sun
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -18,7 +18,7 @@ const NAV_ITEMS = [
 export const NavigationSidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { sidebarCollapsed, toggleSidebar, clearSession, setCommandPaletteOpen } = useAppStore();
+  const { sidebarCollapsed, toggleSidebar, clearSession, setCommandPaletteOpen, darkMode, toggleDarkMode } = useAppStore();
 
   return (
     <aside
@@ -95,6 +95,16 @@ export const NavigationSidebar = () => {
         >
           <Settings className="w-[18px] h-[18px] flex-shrink-0" />
           {!sidebarCollapsed && <span className="flex-1 text-left">Settings</span>}
+        </button>
+
+        {/* Dark Mode Toggle */}
+        <button
+          onClick={toggleDarkMode}
+          className={`nav-item w-full ${sidebarCollapsed ? 'justify-center px-0' : ''}`}
+          title={darkMode ? 'Light Mode' : 'Dark Mode'}
+        >
+          {darkMode ? <Sun className="w-[18px] h-[18px] flex-shrink-0" /> : <Moon className="w-[18px] h-[18px] flex-shrink-0" />}
+          {!sidebarCollapsed && <span className="flex-1 text-left">{darkMode ? 'Light Mode' : 'Dark Mode'}</span>}
         </button>
 
         {/* New Session */}

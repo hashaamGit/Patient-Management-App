@@ -481,7 +481,7 @@ export const PrescriptionPanel = () => {
       </div>
 
       {/* PRINT TEMPLATE (Hidden from screen) */}
-      <div className="hidden print:block p-8 bg-white text-black min-h-screen">
+      <div className="hidden print-template p-8 bg-white text-black min-h-screen">
         
         {/* Letterhead */}
         <div className="border-b-2 border-black pb-4 mb-6 flex justify-between items-start">
@@ -502,6 +502,7 @@ export const PrescriptionPanel = () => {
         <div className="flex flex-wrap gap-x-8 gap-y-2 mb-6 border-b border-gray-300 pb-4 text-sm">
           <p><span className="font-semibold">Patient Name:</span> {patient.name}</p>
           <p><span className="font-semibold">Age/Sex:</span> {patient.age} / {patient.gender}</p>
+          <p><span className="font-semibold">MRN:</span> {patient.mrn || 'N/A'}</p>
           <p><span className="font-semibold">Date:</span> {format(new Date(), 'dd MMM, yyyy')}</p>
           {patient.weight && <p><span className="font-semibold">Weight:</span> {patient.weight}</p>}
           {patient.bp && <p><span className="font-semibold">BP:</span> {patient.bp}</p>}
@@ -516,30 +517,43 @@ export const PrescriptionPanel = () => {
         )}
 
         {/* Rx Symbol */}
-        <div className="text-5xl font-serif font-bold italic mb-6">Rx</div>
+        <div className="text-5xl font-serif font-bold italic mb-4">Rx</div>
 
-        {/* Meds */}
-        <div className="space-y-6 mb-8 pl-4">
-          {prescription.items.map((item, idx) => (
-            <div key={item.id} className="flex gap-3">
-              <span className="font-bold">{idx + 1}.</span>
-              <div className="flex-1">
-                <p className="font-bold text-base">
-                  {item.brandName || item.genericName} <span className="font-normal text-sm ml-2">({item.strength}) - {item.form}</span>
-                </p>
-                {item.brandName && <p className="text-sm text-gray-600 mb-1">{item.genericName}</p>}
-                
-                <p className="text-sm font-medium mt-1">
-                  Dosage: {item.dosage} | {item.frequency} | {item.route} | For {item.duration}
-                </p>
-                {item.instructions && <p className="text-sm italic mt-1">{item.instructions}</p>}
-              </div>
-            </div>
-          ))}
+        {/* Meds Table */}
+        <div className="mb-8">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-black text-sm">
+                <th className="py-2 pr-2 font-bold w-8">#</th>
+                <th className="py-2 px-2 font-bold">Medication</th>
+                <th className="py-2 px-2 font-bold">Strength</th>
+                <th className="py-2 px-2 font-bold">Form</th>
+                <th className="py-2 px-2 font-bold">Dosage</th>
+                <th className="py-2 px-2 font-bold">Duration</th>
+                <th className="py-2 pl-2 font-bold">Instructions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {prescription.items.map((item, idx) => (
+                <tr key={item.id} className="border-b border-gray-200 text-sm align-top">
+                  <td className="py-3 pr-2 font-medium">{idx + 1}</td>
+                  <td className="py-3 px-2">
+                    <div className="font-bold">{item.brandName || item.genericName}</div>
+                    {item.brandName && <div className="text-xs text-gray-600">{item.genericName}</div>}
+                  </td>
+                  <td className="py-3 px-2">{item.strength}</td>
+                  <td className="py-3 px-2">{item.form}</td>
+                  <td className="py-3 px-2 whitespace-nowrap">{item.dosage} <br/><span className="text-xs text-gray-600">{item.frequency} | {item.route}</span></td>
+                  <td className="py-3 px-2">{item.duration}</td>
+                  <td className="py-3 pl-2 italic text-gray-700">{item.instructions || '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
         {/* Advice & Labs */}
-        <div className="grid grid-cols-2 gap-8 mb-8 mt-12 border-t border-gray-300 pt-6">
+        <div className="grid grid-cols-2 gap-8 mb-8 mt-8 border-t border-gray-300 pt-6">
           {prescription.advice && (
             <div>
               <h4 className="font-bold text-sm mb-2 underline">Advice:</h4>
@@ -558,10 +572,12 @@ export const PrescriptionPanel = () => {
 
         {/* Follow up & Sign */}
         <div className="mt-16 flex justify-between items-end">
-          {prescription.followUpDate && (
+          {prescription.followUpDate ? (
             <div className="text-sm">
               <span className="font-bold">Follow-up:</span> {format(new Date(prescription.followUpDate), 'dd MMM, yyyy')}
             </div>
+          ) : (
+            <div></div>
           )}
           <div className="text-center ml-auto">
             <div className="w-48 border-b border-black mb-2"></div>

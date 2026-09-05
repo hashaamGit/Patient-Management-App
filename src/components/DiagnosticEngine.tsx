@@ -3,7 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import { SYMPTOM_CATEGORIES, ALL_SYMPTOMS } from '../data/symptoms';
 import { DISEASE_DOMAINS, ALL_DISEASES, DOMAIN_LIST } from '../data/diseases';
 import { DECISION_TREES } from '../data/decisionTrees';
-import type { DecisionTree, TreeStep, TerminalDiagnosis } from '../types';
+import type { DecisionTree, TreeStep, TerminalDiagnosis, PrescriptionItem } from '../types';
 import {
   Activity, Stethoscope, FileText, BrainCircuit, Search,
   ChevronRight, ChevronLeft, ArrowLeft, CheckCircle2, AlertTriangle,
@@ -12,6 +12,18 @@ import {
 } from 'lucide-react';
 
 type TabType = 'symptoms' | 'domains' | 'diseases' | 'ai';
+
+const SYMPTOM_TREE_MAP: Record<string, string> = {
+  'Cough (Dry)': 'Cough',
+  'Cough (Productive)': 'Cough',
+  'Numbness/Tingling': 'Numbness',
+};
+
+const getTreeKeyForSymptom = (symptom: string): string | null => {
+  if (DECISION_TREES[symptom]) return symptom;
+  if (SYMPTOM_TREE_MAP[symptom] && DECISION_TREES[SYMPTOM_TREE_MAP[symptom]]) return SYMPTOM_TREE_MAP[symptom];
+  return null;
+};
 
 export const DiagnosticEngine = () => {
   const { addPrescriptionItem, setAdvice, addDiagnosis, addLab } = useAppStore();
@@ -28,6 +40,9 @@ export const DiagnosticEngine = () => {
   const [activeTreeId, setActiveTreeId] = useState<string | null>(null);
   const [currentStepId, setCurrentStepId] = useState<number | null>(null);
   const [treePath, setTreePath] = useState<Array<{ stepId: number; label: string }>>([]);
+
+  // AI Tab State
+  const [aiPrompt, setAiPrompt] = useState('');
 
   // --- Filtering Logic ---
   
@@ -66,13 +81,13 @@ export const DiagnosticEngine = () => {
   };
 
   const handleStartTree = (triggerId: string) => {
-    const tree = DECISION_TREES[triggerId];
+    const treeKey = getTreeKeyForSymptom(triggerId);
+    if (!treeKey) return;
+    const tree = DECISION_TREES[treeKey];
     if (tree) {
-      setActiveTreeId(triggerId);
+      setActiveTreeId(treeKey);
       setCurrentStepId(1); // Assuming 1 is the starting step
       setTreePath([]);
-    } else {
-      // Tree doesn't exist; you could show a toast here. For now, handled in render.
     }
   };
 
@@ -101,36 +116,27 @@ export const DiagnosticEngine = () => {
 
   const handleTransferAll = (terminal: TerminalDiagnosis) => {
     // 1. Add Diagnosis
-    addDiagnosis({ 
-      id: Date.now().toString(), 
-      name: terminal.diagnosis, 
-      type: 'primary', 
-      status: 'active',
-      date: new Date().toISOString()
-    });
+    addDiagnosis(terminal.diagnosis);
 
     // 2. Add Medications
     terminal.medications?.forEach(med => {
       addPrescriptionItem({
-        id: Math.random().toString(),
-        type: 'medication',
-        name: med.name,
+        id: Math.random().toString(), // Adding id since Omit is used loosely somewhere or not at all in the strict mode if missing
+        genericName: med.genericName,
+        brandName: med.brandName,
+        strength: med.strength,
+        form: med.form || 'Tab',
+        route: 'Oral',
         dosage: med.dosage,
-        frequency: '', // Assume to be filled by clinician or derived
+        frequency: 'OD',
         duration: med.duration,
-        route: '',
-        instructions: ''
+        instructions: med.instructions || '',
       });
     });
 
     // 3. Add Labs
     terminal.investigations?.forEach(lab => {
-      addLab({
-        id: Math.random().toString(),
-        name: lab,
-        date: new Date().toISOString(),
-        status: 'pending'
-      });
+      addLab(lab);
     });
 
     // 4. Set Advice
@@ -147,16 +153,17 @@ export const DiagnosticEngine = () => {
     terminal.medications?.forEach(med => {
       addPrescriptionItem({
         id: Math.random().toString(),
-        type: 'medication',
-        name: med.name,
+        genericName: med.genericName,
+        brandName: med.brandName,
+        strength: med.strength,
+        form: med.form || 'Tab',
+        route: 'Oral',
         dosage: med.dosage,
-        frequency: '',
+        frequency: 'OD',
         duration: med.duration,
-        route: '',
-        instructions: ''
+        instructions: med.instructions || '',
       });
     });
-    // Optional: Return to main view or show success
   };
 
   // --- Render Helpers ---
@@ -227,8 +234,6 @@ export const DiagnosticEngine = () => {
           >
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center text-primary">
-                {/* Dynamically matching icon is tricky without a mapping, using generic here if string provided, 
-                    but prompt says icon is a string. Assuming it's an emoji or lucide icon name. For safety, using a generic activity icon. */}
                 <Activity size={16} />
               </div>
               <span className="font-semibold text-text-primary text-sm">{category.system}</span>
@@ -242,7 +247,8 @@ export const DiagnosticEngine = () => {
           {(expandedCategories[category.system] || searchQuery) && (
             <div className="p-3 flex flex-wrap gap-2 border-t border-border">
               {category.symptoms.map(symptom => {
-                const hasTree = !!DECISION_TREES[symptom];
+                const treeKey = getTreeKeyForSymptom(symptom);
+                const hasTree = !!treeKey;
                 return (
                   <button
                     key={symptom}
@@ -294,20 +300,23 @@ export const DiagnosticEngine = () => {
 
           {(expandedDomains[domain.domain] || searchQuery) && (
             <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-border max-h-48 overflow-y-auto">
-              {domain.diseases.map(disease => (
-                <div 
-                  key={disease.name}
-                  onClick={() => DECISION_TREES[disease.name] && handleStartTree(disease.name)}
-                  className={`flex items-center justify-between p-2 rounded text-sm ${
-                    DECISION_TREES[disease.name] ? 'hover:bg-primary/5 cursor-pointer text-text-primary' : 'text-text-secondary cursor-default'
-                  }`}
-                >
-                  <span className="truncate pr-2">{disease.name}</span>
-                  <span className="text-xs bg-canvas px-1.5 py-0.5 rounded border border-border clinical-num shrink-0">
-                    {disease.icdCode}
-                  </span>
-                </div>
-              ))}
+              {domain.diseases.map(disease => {
+                const treeKey = getTreeKeyForSymptom(disease.name);
+                return (
+                  <div 
+                    key={disease.name}
+                    onClick={() => treeKey && handleStartTree(disease.name)}
+                    className={`flex items-center justify-between p-2 rounded text-sm ${
+                      treeKey ? 'hover:bg-primary/5 cursor-pointer text-text-primary' : 'text-text-secondary cursor-default'
+                    }`}
+                  >
+                    <span className="truncate pr-2">{disease.name}</span>
+                    <span className="text-xs bg-canvas px-1.5 py-0.5 rounded border border-border clinical-num shrink-0">
+                      {disease.icdCode}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -319,7 +328,8 @@ export const DiagnosticEngine = () => {
     <div className="p-4">
       <div className="bg-surface border border-border rounded-lg overflow-hidden">
         {filteredDiseases.map((disease, idx) => {
-          const hasTree = !!DECISION_TREES[disease];
+          const treeKey = getTreeKeyForSymptom(disease);
+          const hasTree = !!treeKey;
           return (
             <div 
               key={disease}
@@ -355,6 +365,8 @@ export const DiagnosticEngine = () => {
       <div className="w-full max-w-lg relative">
         <textarea 
           placeholder="e.g., 45yo male presenting with acute radiating chest pain, diaphoresis, and nausea for the past 2 hours..."
+          value={aiPrompt}
+          onChange={(e) => setAiPrompt(e.target.value)}
           className="w-full h-32 p-4 bg-canvas border border-border rounded-lg text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <div className="absolute bottom-4 right-4 flex items-center gap-2">
@@ -367,7 +379,11 @@ export const DiagnosticEngine = () => {
       
       <div className="flex flex-wrap justify-center gap-2 max-w-lg">
         {["Persistent dry cough with weight loss", "Severe unilateral headache with aura", "Acute RLQ pain with fever"].map(prompt => (
-          <button key={prompt} className="px-3 py-1.5 text-xs bg-surface border border-border rounded-full text-text-secondary hover:bg-canvas transition-colors">
+          <button 
+            key={prompt} 
+            onClick={() => setAiPrompt(prompt)}
+            className="px-3 py-1.5 text-xs bg-surface border border-border rounded-full text-text-secondary hover:bg-canvas transition-colors"
+          >
             "{prompt}"
           </button>
         ))}
@@ -378,7 +394,8 @@ export const DiagnosticEngine = () => {
   const renderTreeView = () => {
     if (!activeTreeId || currentStepId === null) return null;
     const tree = DECISION_TREES[activeTreeId];
-    const currentStep = tree.steps[currentStepId] as TreeStep & { terminal?: TerminalDiagnosis };
+    const currentStep = tree.steps[currentStepId];
+    const terminalStep = tree.terminal[currentStepId];
 
     return (
       <div className="flex h-full bg-canvas">
@@ -415,7 +432,7 @@ export const DiagnosticEngine = () => {
                   </div>
                 </div>
                 <div className="text-xs font-medium text-primary">
-                  {currentStep.terminal ? 'Diagnosis Reached' : 'Current Step'}
+                  {terminalStep ? 'Diagnosis Reached' : 'Current Step'}
                 </div>
               </div>
             </div>
@@ -424,21 +441,21 @@ export const DiagnosticEngine = () => {
 
         {/* Main Content Area */}
         <div className="flex-1 overflow-y-auto p-8">
-          {currentStep.terminal ? (
+          {terminalStep ? (
             <div className="max-w-2xl mx-auto">
               <div className="card border-success border-2 overflow-hidden shadow-sm">
                 <div className="bg-success-bg p-6 border-b border-border">
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <h2 className="text-2xl font-bold text-text-primary mb-2">
-                        {currentStep.terminal.diagnosis}
+                        {terminalStep.diagnosis}
                       </h2>
                       <div className="flex items-center gap-3">
                         <span className="badge badge-success text-sm flex items-center gap-1 px-2.5 py-1">
-                          <Target size={14} /> {currentStep.terminal.confidence} Likely
+                          <Target size={14} /> {terminalStep.confidence} Likely
                         </span>
                         <span className="text-xs text-text-muted flex items-center gap-1 font-medium bg-canvas px-2 py-1 rounded border border-border">
-                          <BookOpen size={14} /> {currentStep.terminal.guideline}
+                          <BookOpen size={14} /> {terminalStep.guidelines}
                         </span>
                       </div>
                     </div>
@@ -446,13 +463,13 @@ export const DiagnosticEngine = () => {
                 </div>
 
                 <div className="p-6 space-y-6 bg-surface">
-                  {currentStep.terminal.redFlags && currentStep.terminal.redFlags.length > 0 && (
+                  {terminalStep.redFlags && terminalStep.redFlags.length > 0 && (
                     <div className="p-4 bg-danger-bg border border-danger/30 rounded-lg">
                       <div className="flex items-center gap-2 text-danger-text font-semibold text-sm mb-2">
                         <AlertTriangle size={16} /> Emergency Conditions to Rule Out
                       </div>
                       <ul className="list-disc pl-5 text-sm text-danger-text space-y-1">
-                        {currentStep.terminal.redFlags.map((flag, i) => (
+                        {terminalStep.redFlags.map((flag, i) => (
                           <li key={i}>{flag}</li>
                         ))}
                       </ul>
@@ -465,9 +482,9 @@ export const DiagnosticEngine = () => {
                         <Pill size={16} className="text-primary" /> Recommended Medications
                       </h3>
                       <div className="space-y-2">
-                        {currentStep.terminal.medications.map((med, i) => (
+                        {terminalStep.medications.map((med, i) => (
                           <div key={i} className="p-3 bg-canvas border border-border rounded-lg text-sm">
-                            <div className="font-medium text-text-primary">{med.name} <span className="text-text-muted font-normal">({med.strength})</span></div>
+                            <div className="font-medium text-text-primary">{med.genericName} <span className="text-text-muted font-normal">({med.brandName})</span> - {med.strength}</div>
                             <div className="text-text-secondary text-xs mt-1">{med.dosage} for {med.duration}</div>
                           </div>
                         ))}
@@ -479,7 +496,7 @@ export const DiagnosticEngine = () => {
                         <FlaskConical size={16} className="text-primary" /> Investigations
                       </h3>
                       <div className="flex flex-wrap gap-2">
-                        {currentStep.terminal.investigations.map((inv, i) => (
+                        {terminalStep.investigations.map((inv, i) => (
                           <span key={i} className="px-2.5 py-1.5 bg-canvas border border-border rounded-md text-xs font-medium text-text-secondary">
                             {inv}
                           </span>
@@ -491,7 +508,7 @@ export const DiagnosticEngine = () => {
                           <FileText size={16} className="text-primary" /> Clinical Advice
                         </h3>
                         <p className="text-sm text-text-secondary bg-canvas p-3 rounded-lg border border-border">
-                          {currentStep.terminal.advice}
+                          {terminalStep.advice}
                         </p>
                       </div>
                     </div>
@@ -506,13 +523,13 @@ export const DiagnosticEngine = () => {
                     Restart Tree
                   </button>
                   <button 
-                    onClick={() => handleTransferMeds(currentStep.terminal!)}
+                    onClick={() => handleTransferMeds(terminalStep)}
                     className="px-4 py-2 border border-primary/30 bg-primary/5 rounded-lg text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
                   >
                     + Transfer Meds Only
                   </button>
                   <button 
-                    onClick={() => handleTransferAll(currentStep.terminal!)}
+                    onClick={() => handleTransferAll(terminalStep)}
                     className="px-5 py-2 bg-success text-white rounded-lg text-sm font-medium hover:bg-success/90 transition-colors shadow-sm flex items-center gap-2"
                   >
                     <CheckCircle2 size={16} /> Transfer All to Rx Pad
@@ -520,7 +537,7 @@ export const DiagnosticEngine = () => {
                 </div>
               </div>
             </div>
-          ) : (
+          ) : currentStep ? (
             <div className="max-w-2xl mx-auto space-y-6">
               <h2 className="text-xl font-bold text-text-primary mb-6">
                 {currentStep.question}
@@ -541,7 +558,7 @@ export const DiagnosticEngine = () => {
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     );

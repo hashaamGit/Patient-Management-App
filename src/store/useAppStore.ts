@@ -106,6 +106,10 @@ interface AppState {
   // Command Palette
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (open: boolean) => void;
+
+  // Dark Mode
+  darkMode: boolean;
+  toggleDarkMode: () => void;
 }
 
 // ============================================================
@@ -256,6 +260,10 @@ export const useAppStore = create<AppState>()(
       // ---- Command Palette ----
       commandPaletteOpen: false,
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+
+      // ---- Dark Mode ----
+      darkMode: false,
+      toggleDarkMode: () => set((s) => ({ darkMode: !s.darkMode })),
     }),
     {
       name: 'clinrail-v4-storage',
@@ -266,6 +274,7 @@ export const useAppStore = create<AppState>()(
         patient: state.patient,
         prescription: state.prescription,
         patientHistory: state.patientHistory,
+        darkMode: state.darkMode,
       }),
     }
   )
