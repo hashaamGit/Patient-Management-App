@@ -7,7 +7,7 @@ function App() {
   const darkMode = useAppStore(s => s.darkMode);
 
   return (
-    <div className={darkMode ? 'dark' : ''}>
+    <div className={`${darkMode ? 'dark' : ''} min-h-screen`}>
       <BrowserRouter>
         <Routes>
           <Route path="/*" element={<AppShell />} />

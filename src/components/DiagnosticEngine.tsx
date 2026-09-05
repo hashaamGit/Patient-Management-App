@@ -121,7 +121,6 @@ export const DiagnosticEngine = () => {
     // 2. Add Medications
     terminal.medications?.forEach(med => {
       addPrescriptionItem({
-        id: Math.random().toString(), // Adding id since Omit is used loosely somewhere or not at all in the strict mode if missing
         genericName: med.genericName,
         brandName: med.brandName,
         strength: med.strength,
@@ -152,7 +151,6 @@ export const DiagnosticEngine = () => {
   const handleTransferMeds = (terminal: TerminalDiagnosis) => {
     terminal.medications?.forEach(med => {
       addPrescriptionItem({
-        id: Math.random().toString(),
         genericName: med.genericName,
         brandName: med.brandName,
         strength: med.strength,
@@ -384,7 +382,7 @@ export const DiagnosticEngine = () => {
             onClick={() => setAiPrompt(prompt)}
             className="px-3 py-1.5 text-xs bg-surface border border-border rounded-full text-text-secondary hover:bg-canvas transition-colors"
           >
-            "{prompt}"
+            {prompt}
           </button>
         ))}
       </div>
