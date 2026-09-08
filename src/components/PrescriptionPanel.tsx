@@ -50,6 +50,7 @@ export const PrescriptionPanel = () => {
 
   const [newDiagnosis, setNewDiagnosis] = useState('');
   const [newLab, setNewLab] = useState('');
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   // Tier 1 alert modal
   const [alertModal, setAlertModal] = useState<{ open: boolean; message: string; pendingItem: any } | null>(null);
@@ -190,14 +191,14 @@ export const PrescriptionPanel = () => {
           <button onClick={saveCurrentCase} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary text-white rounded-md hover:bg-primary/90 transition-colors">
             <Save className="w-4 h-4" /> Save Case
           </button>
-          <button onClick={handleSaveCustomTemplate} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-surface border border-border text-text-primary rounded-md hover:bg-canvas transition-colors">
-            <Star className="w-4 h-4" /> Save as Custom Template
+          <button onClick={handleSaveCustomTemplate} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-surface border border-border text-text-primary rounded-md hover:bg-canvas transition-colors">
+            <Star className="w-4 h-4" /> Save as Template
           </button>
-          <button onClick={handlePrint} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-surface border border-border text-text-primary rounded-md hover:bg-canvas transition-colors">
-            <Printer className="w-4 h-4" /> Print Rx
+          <button onClick={() => setShowPrintModal(true)} className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 text-white rounded-md shadow-sm transition-colors">
+            <Printer className="w-4 h-4" /> Preview &amp; Print / PDF
           </button>
-          <button onClick={resetPrescription} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-surface border border-danger text-danger rounded-md hover:bg-danger-bg transition-colors">
-            <Trash2 className="w-4 h-4" /> Clear Rx
+          <button onClick={resetPrescription} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-surface border border-danger text-danger rounded-md hover:bg-danger-bg transition-colors">
+            <Trash2 className="w-3.5 h-3.5" /> Clear
           </button>
         </div>
       </div>
@@ -517,6 +518,52 @@ export const PrescriptionPanel = () => {
               
               <div>
                 <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2 flex items-center gap-1"><Clock className="w-3 h-3" /> Follow-up</h3>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 3);
+                      setFollowUpDate(d.toISOString().split('T')[0]);
+                    }}
+                    className="px-2 py-0.5 text-[11px] font-semibold rounded bg-canvas hover:bg-border border border-border text-text-secondary"
+                  >
+                    3 Days
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 7);
+                      setFollowUpDate(d.toISOString().split('T')[0]);
+                    }}
+                    className="px-2 py-0.5 text-[11px] font-semibold rounded bg-canvas hover:bg-border border border-border text-text-secondary"
+                  >
+                    1 Week
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 14);
+                      setFollowUpDate(d.toISOString().split('T')[0]);
+                    }}
+                    className="px-2 py-0.5 text-[11px] font-semibold rounded bg-canvas hover:bg-border border border-border text-text-secondary"
+                  >
+                    2 Weeks
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 30);
+                      setFollowUpDate(d.toISOString().split('T')[0]);
+                    }}
+                    className="px-2 py-0.5 text-[11px] font-semibold rounded bg-canvas hover:bg-border border border-border text-text-secondary"
+                  >
+                    1 Month
+                  </button>
+                </div>
                 <input 
                   type="date" 
                   value={prescription.followUpDate} 
@@ -530,109 +577,271 @@ export const PrescriptionPanel = () => {
 
       </div>
 
-      {/* PRINT TEMPLATE (Hidden from screen) */}
-      <div className="hidden print-template p-8 bg-white text-black min-h-screen">
+      {/* ============ PRINT PREVIEW MODAL ============ */}
+      {showPrintModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm print:hidden">
+          <div className="max-w-3xl w-full bg-surface border border-border rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="p-4 border-b border-border flex items-center justify-between bg-canvas">
+              <div className="flex items-center gap-2">
+                <Printer className="w-5 h-5 text-primary" />
+                <h3 className="font-bold text-text-primary text-base">Hassan and Co. Prescription Slip Preview</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-primary/20 transition-all"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Print to Paper / PDF</span>
+                </button>
+                <button
+                  onClick={() => setShowPrintModal(false)}
+                  className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-border transition-colors text-sm font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: Render exact slip representation on screen */}
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-100 text-black font-sans">
+              <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow border border-slate-300 space-y-6">
+                
+                {/* Letterhead */}
+                <div className="border-b-2 border-slate-900 pb-4 flex justify-between items-start">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-widest font-extrabold text-teal-800 mb-0.5">
+                      Hassan and Co. Healthcare Systems
+                    </div>
+                    <h2 className="text-xl font-bold font-serif text-black">{doctorProfile.name}</h2>
+                    <p className="text-xs font-semibold text-slate-700">{doctorProfile.credentials}</p>
+                    <p className="text-xs text-slate-600">{doctorProfile.specialty}</p>
+                    <p className="text-[11px] text-slate-600 mt-1 font-mono">PMDC: {doctorProfile.registrationNo}</p>
+                  </div>
+                  <div className="text-right text-xs">
+                    <p className="font-bold text-slate-900">{doctorProfile.clinicName || 'Hassan and Co. Hospital'}</p>
+                    <p className="text-slate-600">{doctorProfile.clinicAddress || 'Main Healthcare Blvd, Lahore'}</p>
+                    <p className="text-slate-600 font-mono mt-0.5">{doctorProfile.phone || '+92 42 3578 9000'}</p>
+                  </div>
+                </div>
+
+                {/* Patient Demographics */}
+                <div className="flex flex-wrap gap-4 border-b border-slate-200 pb-3 text-xs">
+                  <div><span className="text-slate-500">Patient:</span> <strong className="text-black">{patient.name || 'Walk-in'}</strong></div>
+                  <div><span className="text-slate-500">Age/Sex:</span> {patient.age || '--'} / {patient.gender || '--'}</div>
+                  <div><span className="text-slate-500">MRN:</span> {patient.mrn || 'OPD-AUTO'}</div>
+                  <div><span className="text-slate-500">Date:</span> {format(new Date(), 'dd MMM yyyy')}</div>
+                  {patient.bp && <div><span className="text-slate-500">BP:</span> {patient.bp} mmHg</div>}
+                  {patient.temperature && <div><span className="text-slate-500">Temp:</span> {patient.temperature} °C</div>}
+                </div>
+
+                {/* Diagnosis */}
+                {prescription.diagnosis.length > 0 && (
+                  <div className="bg-slate-50 p-2.5 rounded border border-slate-200 text-xs">
+                    <span className="font-bold text-slate-700 uppercase">Diagnosis: </span>
+                    <strong className="text-black">{prescription.diagnosis.join(', ')}</strong>
+                  </div>
+                )}
+
+                {/* Rx Symbol */}
+                <div className="text-3xl font-serif font-bold italic text-slate-900">℞</div>
+
+                {/* Medications */}
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-slate-900 font-bold uppercase text-slate-800">
+                      <th className="py-1.5 pr-2 w-6">#</th>
+                      <th className="py-1.5 px-2">Drug Name</th>
+                      <th className="py-1.5 px-2">Form</th>
+                      <th className="py-1.5 px-2">Dosage & Frequency</th>
+                      <th className="py-1.5 px-2">Duration</th>
+                      <th className="py-1.5 pl-2">Instructions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {prescription.items.map((item, idx) => (
+                      <tr key={item.id || idx}>
+                        <td className="py-2 pr-2 font-bold text-slate-500">{idx + 1}</td>
+                        <td className="py-2 px-2">
+                          <div className="font-bold text-black">{item.brandName || item.genericName}</div>
+                          <div className="text-[10px] text-teal-700 font-semibold">{item.strength}</div>
+                        </td>
+                        <td className="py-2 px-2 text-slate-600">{item.form}</td>
+                        <td className="py-2 px-2">
+                          <span className="font-bold text-black">{item.dosage}</span>
+                          <div className="text-[10px] text-slate-500">{item.frequency} • {item.route}</div>
+                        </td>
+                        <td className="py-2 px-2 text-slate-700 font-medium">{item.duration}</td>
+                        <td className="py-2 pl-2 italic text-slate-600">{item.instructions || 'As directed'}</td>
+                      </tr>
+                    ))}
+                    {prescription.items.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-4 text-center text-slate-400 italic">No medications recorded.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                {/* Advice & Labs */}
+                <div className="grid grid-cols-2 gap-4 border-t border-slate-200 pt-3 text-xs">
+                  <div>
+                    <h5 className="font-bold text-slate-700 uppercase mb-1">Advice:</h5>
+                    <p className="text-slate-700 whitespace-pre-line">{prescription.advice || 'Standard balanced diet & rest.'}</p>
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-slate-700 uppercase mb-1">Investigations:</h5>
+                    {prescription.labs.length > 0 ? (
+                      <ul className="list-disc list-inside text-slate-700">
+                        {prescription.labs.map((l, i) => <li key={i}>{l}</li>)}
+                      </ul>
+                    ) : (
+                      <p className="text-slate-400 italic">None.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer Signature */}
+                <div className="border-t border-slate-200 pt-4 flex justify-between items-end text-xs">
+                  <div className="text-slate-500">
+                    {prescription.followUpDate ? `Review on: ${format(new Date(prescription.followUpDate), 'dd MMM yyyy')}` : 'Review as needed.'}
+                  </div>
+                  <div className="text-center">
+                    <div className="w-40 border-b border-slate-900 mb-1"></div>
+                    <span className="font-bold text-black text-[11px]">Doctor Signature</span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ============ PRINT TEMPLATE (Activated in Print Mode & PDF Export) ============ */}
+      <div className="print-prescription-slip hidden print:block p-8 bg-white text-black min-h-screen font-sans">
         
-        {/* Letterhead */}
-        <div className="border-b-2 border-black pb-4 mb-6 flex justify-between items-start">
+        {/* Hospital & Doctor Letterhead */}
+        <div className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-start">
           <div>
-            <h1 className="text-3xl font-bold text-black font-serif">{doctorProfile.name}</h1>
-            <p className="text-sm font-semibold">{doctorProfile.credentials}</p>
-            <p className="text-sm text-gray-700">{doctorProfile.specialty}</p>
-            <p className="text-sm text-gray-700 mt-1">Reg No: {doctorProfile.registrationNo}</p>
+            <div className="text-xs uppercase tracking-widest font-extrabold text-teal-800 mb-1">
+              Hassan and Co. Healthcare Systems
+            </div>
+            <h1 className="text-2xl font-bold text-black font-serif">{doctorProfile.name}</h1>
+            <p className="text-xs font-semibold text-slate-700">{doctorProfile.credentials}</p>
+            <p className="text-xs text-slate-600">{doctorProfile.specialty}</p>
+            <p className="text-xs text-slate-600 mt-1 font-mono">License / PMDC Reg: {doctorProfile.registrationNo}</p>
           </div>
           <div className="text-right">
-            <p className="text-sm font-medium">{doctorProfile.clinicName}</p>
-            <p className="text-sm text-gray-700 whitespace-pre-line">{doctorProfile.clinicAddress}</p>
-            <p className="text-sm text-gray-700">Phone: {doctorProfile.phone || '________________'}</p>
+            <p className="text-sm font-bold text-slate-900">{doctorProfile.clinicName || 'Hassan and Co. Hospital'}</p>
+            <p className="text-xs text-slate-600 whitespace-pre-line">{doctorProfile.clinicAddress || 'Main Healthcare Blvd, Lahore'}</p>
+            <p className="text-xs text-slate-600 font-mono mt-1">UAN: {doctorProfile.phone || '+92 42 3578 9000'}</p>
           </div>
         </div>
 
-        {/* Demographics */}
-        <div className="flex flex-wrap gap-x-8 gap-y-2 mb-6 border-b border-gray-300 pb-4 text-sm">
-          <p><span className="font-semibold">Patient Name:</span> {patient.name}</p>
-          <p><span className="font-semibold">Age/Sex:</span> {patient.age} / {patient.gender}</p>
-          <p><span className="font-semibold">MRN:</span> {patient.mrn || 'N/A'}</p>
-          <p><span className="font-semibold">Date:</span> {format(new Date(), 'dd MMM, yyyy')}</p>
-          {patient.weight && <p><span className="font-semibold">Weight:</span> {patient.weight}</p>}
-          {patient.bp && <p><span className="font-semibold">BP:</span> {patient.bp}</p>}
+        {/* Patient Demographics & Vitals */}
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 mb-6 border-b border-slate-300 pb-4 text-xs">
+          <div><span className="font-bold text-slate-700">Patient Name:</span> <span className="font-bold text-sm text-black">{patient.name || 'Walk-in Patient'}</span></div>
+          <div><span className="font-bold text-slate-700">Age / Sex:</span> {patient.age || '--'} / {patient.gender || '--'}</div>
+          <div><span className="font-bold text-slate-700">MRN:</span> {patient.mrn || 'OPD-' + Date.now().toString().slice(-6)}</div>
+          <div><span className="font-bold text-slate-700">Date:</span> {format(new Date(), 'dd MMM, yyyy')}</div>
+          {patient.weight && <div><span className="font-bold text-slate-700">Weight:</span> {patient.weight} kg</div>}
+          {patient.bp && <div><span className="font-bold text-slate-700">BP:</span> {patient.bp} mmHg</div>}
+          {patient.temperature && <div><span className="font-bold text-slate-700">Temp:</span> {patient.temperature} °C</div>}
         </div>
 
         {/* Diagnoses */}
         {prescription.diagnosis.length > 0 && (
-          <div className="mb-6">
-            <h4 className="font-bold text-sm mb-1 underline">Diagnosis:</h4>
-            <p className="text-sm">{prescription.diagnosis.join(', ')}</p>
+          <div className="mb-5 bg-slate-50 p-3 rounded border border-slate-200">
+            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-1">Clinical Assessment / Diagnosis:</h4>
+            <p className="text-sm font-semibold text-slate-900">{prescription.diagnosis.join(' • ')}</p>
           </div>
         )}
 
         {/* Rx Symbol */}
-        <div className="text-5xl font-serif font-bold italic mb-4">Rx</div>
+        <div className="text-4xl font-serif font-bold italic text-slate-900 mb-3">℞</div>
 
-        {/* Meds Table */}
-        <div className="mb-8">
+        {/* Medications Table */}
+        <div className="mb-6">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-black text-sm">
-                <th className="py-2 pr-2 font-bold w-8">#</th>
-                <th className="py-2 px-2 font-bold">Medication</th>
-                <th className="py-2 px-2 font-bold">Strength</th>
-                <th className="py-2 px-2 font-bold">Form</th>
-                <th className="py-2 px-2 font-bold">Dosage</th>
-                <th className="py-2 px-2 font-bold">Duration</th>
-                <th className="py-2 pl-2 font-bold">Instructions</th>
+              <tr className="border-b-2 border-slate-900 text-xs font-bold uppercase text-slate-800">
+                <th className="py-2 pr-2 w-8">#</th>
+                <th className="py-2 px-2">Medication & Strength</th>
+                <th className="py-2 px-2">Form</th>
+                <th className="py-2 px-2">Dosage & Frequency</th>
+                <th className="py-2 px-2">Duration</th>
+                <th className="py-2 pl-2">Physician Instructions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-200 text-xs">
               {prescription.items.map((item, idx) => (
-                <tr key={item.id} className="border-b border-gray-200 text-sm align-top">
-                  <td className="py-3 pr-2 font-medium">{idx + 1}</td>
-                  <td className="py-3 px-2">
-                    <div className="font-bold">{item.brandName || item.genericName}</div>
-                    {item.brandName && <div className="text-xs text-gray-600">{item.genericName}</div>}
+                <tr key={item.id || idx} className="align-top">
+                  <td className="py-2.5 pr-2 font-bold text-slate-600">{idx + 1}</td>
+                  <td className="py-2.5 px-2">
+                    <div className="font-bold text-sm text-black">{item.brandName || item.genericName}</div>
+                    {item.brandName && <div className="text-[10px] text-slate-500">{item.genericName}</div>}
+                    <div className="text-[11px] font-semibold text-teal-800">{item.strength}</div>
                   </td>
-                  <td className="py-3 px-2">{item.strength}</td>
-                  <td className="py-3 px-2">{item.form}</td>
-                  <td className="py-3 px-2 whitespace-nowrap">{item.dosage} <br/><span className="text-xs text-gray-600">{item.frequency} | {item.route}</span></td>
-                  <td className="py-3 px-2">{item.duration}</td>
-                  <td className="py-3 pl-2 italic text-gray-700">{item.instructions || '-'}</td>
+                  <td className="py-2.5 px-2 text-slate-700">{item.form}</td>
+                  <td className="py-2.5 px-2 whitespace-nowrap">
+                    <span className="font-bold text-black">{item.dosage}</span>
+                    <div className="text-[11px] text-slate-600">{item.frequency} • {item.route}</div>
+                  </td>
+                  <td className="py-2.5 px-2 font-medium text-slate-800">{item.duration}</td>
+                  <td className="py-2.5 pl-2 italic text-slate-700">{item.instructions || 'As directed'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {prescription.items.length === 0 && (
+            <div className="py-6 text-center text-slate-400 italic text-xs border-b border-slate-200">
+              No medications recorded on this prescription slip.
+            </div>
+          )}
         </div>
 
         {/* Advice & Labs */}
-        <div className="grid grid-cols-2 gap-8 mb-8 mt-8 border-t border-gray-300 pt-6">
-          {prescription.advice && (
-            <div>
-              <h4 className="font-bold text-sm mb-2 underline">Advice:</h4>
-              <p className="text-sm whitespace-pre-line">{prescription.advice}</p>
-            </div>
-          )}
-          {prescription.labs.length > 0 && (
-            <div>
-              <h4 className="font-bold text-sm mb-2 underline">Investigations:</h4>
-              <ul className="list-disc list-inside text-sm">
-                {prescription.labs.map(lab => <li key={lab}>{lab}</li>)}
+        <div className="grid grid-cols-2 gap-6 mb-6 border-t border-slate-300 pt-4 text-xs">
+          <div>
+            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-1.5">Diet & Lifestyle Advice:</h4>
+            <p className="text-slate-800 whitespace-pre-line leading-relaxed">{prescription.advice || 'Standard balanced diet, adequate hydration, and rest.'}</p>
+          </div>
+          <div>
+            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-1.5">Diagnostic Labs / Investigations:</h4>
+            {prescription.labs.length > 0 ? (
+              <ul className="list-disc list-inside text-slate-800 space-y-0.5">
+                {prescription.labs.map((lab, i) => <li key={i}>{lab}</li>)}
               </ul>
-            </div>
-          )}
+            ) : (
+              <p className="text-slate-500 italic">None ordered.</p>
+            )}
+          </div>
         </div>
 
-        {/* Follow up & Sign */}
-        <div className="mt-16 flex justify-between items-end">
-          {prescription.followUpDate ? (
-            <div className="text-sm">
-              <span className="font-bold">Follow-up:</span> {format(new Date(prescription.followUpDate), 'dd MMM, yyyy')}
+        {/* Follow up & Signatures */}
+        <div className="mt-12 pt-4 border-t border-slate-200 flex justify-between items-end text-xs">
+          <div>
+            {prescription.followUpDate ? (
+              <div>
+                <span className="font-bold text-slate-700">Follow-up Appointment:</span>{' '}
+                <span className="font-bold text-sm text-teal-800">{format(new Date(prescription.followUpDate), 'dd MMMM, yyyy')}</span>
+              </div>
+            ) : (
+              <div className="text-slate-500 italic">Review as needed or if symptoms persist.</div>
+            )}
+            <div className="text-[10px] text-slate-400 mt-3 font-mono">
+              Hassan and Co. EMR • Valid Electronic Prescription Slip
             </div>
-          ) : (
-            <div></div>
-          )}
-          <div className="text-center ml-auto">
-            <div className="w-48 border-b border-black mb-2"></div>
-            <p className="font-bold text-sm">Signature</p>
-            <p className="text-sm mt-1">{doctorProfile.name}</p>
+          </div>
+          
+          <div className="text-center">
+            <div className="w-52 border-b-2 border-slate-900 mb-2"></div>
+            <p className="font-bold text-xs text-black">Physician Signature &amp; Stamp</p>
+            <p className="text-[11px] text-slate-600 mt-0.5">{doctorProfile.name}</p>
           </div>
         </div>
 

@@ -3,17 +3,20 @@ import { useAppStore } from '../store/useAppStore';
 import {
   LayoutDashboard, Stethoscope, FlaskConical, FileText,
   ClipboardList, History, Settings, PanelLeftClose, PanelLeft,
-  Activity, Search, LogOut, Moon, Sun
+  Activity, Search, LogOut, Moon, Sun, Shield, Pill, Building2
 } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: '⌘1' },
-  { path: '/workspace', label: 'Clinical Workspace', icon: Stethoscope, shortcut: '⌘2' },
-  { path: '/vitals', label: 'Vitals', icon: Activity, shortcut: '⌘7' },
-  { path: '/labs', label: 'Laboratory', icon: FlaskConical, shortcut: '⌘3' },
-  { path: '/notes', label: 'SOAP Notes', icon: FileText, shortcut: '⌘4' },
-  { path: '/orders', label: 'Orders', icon: ClipboardList, shortcut: '⌘5' },
-  { path: '/history', label: 'Patient History', icon: History, shortcut: '⌘6' },
+  { path: '/workspace', label: 'Clinical Workspace', icon: Stethoscope, shortcut: '⌘1' },
+  { path: '/dashboard', label: 'Insights Analytics', icon: LayoutDashboard, shortcut: '⌘2' },
+  { path: '/admin', label: 'Admin Console', icon: Shield, shortcut: '⌘A' },
+  { path: '/pharmacy', label: 'Pharmacy Dispensary', icon: Pill, shortcut: '⌘P' },
+  { path: '/inventory', label: 'Store Inventory', icon: Building2, shortcut: '⌘I' },
+  { path: '/vitals', label: 'Vitals & Triage', icon: Activity, shortcut: '⌘3' },
+  { path: '/labs', label: 'Laboratory', icon: FlaskConical, shortcut: '⌘4' },
+  { path: '/notes', label: 'SOAP Notes', icon: FileText, shortcut: '⌘5' },
+  { path: '/orders', label: 'Orders', icon: ClipboardList, shortcut: '⌘6' },
+  { path: '/history', label: 'Patient History', icon: History, shortcut: '⌘7' },
 ];
 
 export const NavigationSidebar = () => {
@@ -24,11 +27,18 @@ export const NavigationSidebar = () => {
   const getFilteredNavItems = () => {
     if (!currentUser) return [];
     switch (currentUser.role) {
-      case 'Doctor': return NAV_ITEMS;
-      case 'Nurse': return NAV_ITEMS.filter(i => ['/dashboard', '/vitals', '/orders', '/history'].includes(i.path));
-      case 'Pharmacist': return NAV_ITEMS.filter(i => ['/dashboard', '/orders'].includes(i.path));
-      case 'Admin': return NAV_ITEMS.filter(i => ['/dashboard'].includes(i.path));
-      default: return [];
+      case 'Doctor':
+        return NAV_ITEMS.filter(i => ['/workspace', '/dashboard', '/vitals', '/labs', '/notes', '/orders', '/history', '/pharmacy'].includes(i.path));
+      case 'Nurse':
+        return NAV_ITEMS.filter(i => ['/vitals', '/dashboard', '/orders', '/history'].includes(i.path));
+      case 'Pharmacist':
+        return NAV_ITEMS.filter(i => ['/pharmacy', '/dashboard', '/inventory', '/orders'].includes(i.path));
+      case 'Storekeeper':
+        return NAV_ITEMS.filter(i => ['/inventory', '/dashboard'].includes(i.path));
+      case 'Admin':
+        return NAV_ITEMS.filter(i => ['/admin', '/dashboard', '/workspace', '/inventory', '/pharmacy'].includes(i.path));
+      default:
+        return [];
     }
   };
 
@@ -47,8 +57,8 @@ export const NavigationSidebar = () => {
           <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-success rounded-full pulse-dot" />
         </div>
         {!sidebarCollapsed && (
-          <span className="text-white font-bold text-sm tracking-wide">
-            CLIN<span className="text-primary-light">/</span>RAIL
+          <span className="text-white font-bold text-sm tracking-wide truncate">
+            Hassan <span className="text-primary-light">&amp; Co.</span>
           </span>
         )}
       </div>

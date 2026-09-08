@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { NavigationSidebar } from './NavigationSidebar';
 import { PatientContextBar } from './PatientContextBar';
 import { CommandPalette } from './CommandPalette';
@@ -12,10 +12,15 @@ import { OrderEntry } from './OrderEntry';
 import { PatientHistory } from './PatientHistory';
 import { SettingsPanel } from './SettingsPanel';
 import { LoginScreen } from './LoginScreen';
+import { HomePage } from './HomePage';
+import { AdminManagement } from './AdminManagement';
+import { PharmacyDispensary } from './PharmacyDispensary';
+import { StorekeeperInventory } from './StorekeeperInventory';
 import { useAppStore } from '../store/useAppStore';
 
 export const AppShell = () => {
   const { sidebarCollapsed, commandPaletteOpen, setCommandPaletteOpen, currentUser } = useAppStore();
+  const [showLogin, setShowLogin] = useState(false);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -35,15 +40,19 @@ export const AppShell = () => {
   }, [commandPaletteOpen, setCommandPaletteOpen]);
 
   if (!currentUser) {
-    return <LoginScreen />;
+    if (showLogin) {
+      return <LoginScreen onBackToHome={() => setShowLogin(false)} />;
+    }
+    return <HomePage onOpenLogin={() => setShowLogin(true)} />;
   }
 
   const getDefaultRoute = () => {
     switch (currentUser.role) {
       case 'Doctor': return '/workspace';
-      case 'Nurse': return '/dashboard';
-      case 'Pharmacist': return '/orders';
-      case 'Admin': return '/settings';
+      case 'Nurse': return '/vitals';
+      case 'Pharmacist': return '/pharmacy';
+      case 'Storekeeper': return '/inventory';
+      case 'Admin': return '/admin';
       default: return '/workspace';
     }
   };
@@ -55,21 +64,25 @@ export const AppShell = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Patient Context Bar — always visible */}
+        {/* Patient Context Bar — visible for clinical roles */}
         <PatientContextBar />
 
         {/* Route Content */}
         <main className="flex-1 overflow-hidden">
           <Routes>
             <Route path="/" element={<Navigate to={getDefaultRoute()} replace />} />
+            <Route path="/workspace" element={<ClinicalWorkspace />} />
             <Route path="/dashboard" element={<InsightsDashboard />} />
             <Route path="/vitals" element={<VitalsDashboard />} />
-            <Route path="/workspace" element={<ClinicalWorkspace />} />
+            <Route path="/admin" element={<AdminManagement />} />
+            <Route path="/pharmacy" element={<PharmacyDispensary />} />
+            <Route path="/inventory" element={<StorekeeperInventory />} />
             <Route path="/labs" element={<LabResultsViewer />} />
             <Route path="/notes" element={<SOAPNotes />} />
             <Route path="/orders" element={<OrderEntry />} />
             <Route path="/history" element={<PatientHistory />} />
             <Route path="/settings" element={<SettingsPanel />} />
+            <Route path="*" element={<Navigate to={getDefaultRoute()} replace />} />
           </Routes>
         </main>
       </div>
