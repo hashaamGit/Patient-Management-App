@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { SYMPTOM_CATEGORIES, ALL_SYMPTOMS } from '../data/symptoms';
-import { DISEASE_DOMAINS, ALL_DISEASES, DOMAIN_LIST } from '../data/diseases';
+import { SYMPTOM_CATEGORIES } from '../data/symptoms';
+import { DISEASE_DOMAINS, DOMAIN_LIST } from '../data/diseases';
+import { ALL_SYMPTOMS } from '../data/expandedSymptoms';
+import { ALL_DISEASES } from '../data/expandedDiseases';
 import { DECISION_TREES } from '../data/decisionTrees';
 import type { DecisionTree, TreeStep, TerminalDiagnosis, PrescriptionItem } from '../types';
 import {
@@ -26,7 +28,7 @@ const getTreeKeyForSymptom = (symptom: string): string | null => {
 };
 
 export const DiagnosticEngine = () => {
-  const { addPrescriptionItem, setAdvice, addDiagnosis, addLab } = useAppStore();
+  const { patient, addPrescriptionItem, setAdvice, addDiagnosis, addLab } = useAppStore();
 
   // Navigation & View State
   const [activeTab, setActiveTab] = useState<TabType>('symptoms');
@@ -164,6 +166,21 @@ export const DiagnosticEngine = () => {
     });
   };
 
+  const isPediatric = useMemo(() => {
+    if (!patient.age) return false;
+    const ageStr = patient.age.toLowerCase();
+    if (ageStr.includes('mo') || ageStr.includes('month')) return true;
+    const match = ageStr.match(/\d+/);
+    if (match) {
+      const ageNum = parseInt(match[0], 10);
+      if (!ageStr.includes('y') && !ageStr.includes('year')) {
+        return ageNum < 12;
+      }
+      return ageNum < 12;
+    }
+    return false;
+  }, [patient.age]);
+
   // --- Render Helpers ---
 
   const renderTabs = () => (
@@ -185,15 +202,6 @@ export const DiagnosticEngine = () => {
       >
         <Stethoscope size={16} />
         <span>20 Domains</span>
-      </button>
-      <button
-        onClick={() => setActiveTab('diseases')}
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-          activeTab === 'diseases' ? 'bg-primary text-white' : 'text-text-muted hover:bg-surface-hover'
-        }`}
-      >
-        <FileText size={16} />
-        <span>150+ Diseases</span>
       </button>
       <button
         onClick={() => setActiveTab('ai')}
@@ -319,32 +327,6 @@ export const DiagnosticEngine = () => {
           )}
         </div>
       ))}
-    </div>
-  );
-
-  const renderDiseasesTab = () => (
-    <div className="p-4">
-      <div className="bg-surface border border-border rounded-lg overflow-hidden">
-        {filteredDiseases.map((disease, idx) => {
-          const treeKey = getTreeKeyForSymptom(disease);
-          const hasTree = !!treeKey;
-          return (
-            <div 
-              key={disease}
-              onClick={() => hasTree && handleStartTree(disease)}
-              className={`flex items-center justify-between p-3 border-b border-border last:border-0 ${
-                hasTree ? 'hover:bg-primary/5 cursor-pointer text-text-primary' : 'text-text-secondary opacity-80'
-              }`}
-            >
-              <div className="flex flex-col">
-                <span className="font-medium text-sm">{disease}</span>
-                {!hasTree && <span className="text-xs text-text-muted">Pathway coming soon</span>}
-              </div>
-              {hasTree && <ChevronRight size={16} className="text-text-muted" />}
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 
@@ -476,6 +458,23 @@ export const DiagnosticEngine = () => {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
+                      {isPediatric && terminalStep.medications.length > 0 && (
+                        <div className="mb-3 p-3 bg-warning-bg border border-warning/30 rounded-lg flex items-start gap-2">
+                          <AlertTriangle size={16} className="text-warning mt-0.5 shrink-0" />
+                          <span className="text-sm text-warning-text font-medium">
+                            Pediatric Patient: Verify weight-based dosing
+                          </span>
+                        </div>
+                      )}
+                      
+                      {patient.allergies?.some(a => terminalStep.medications.some(m => `${m.genericName} ${m.brandName}`.toLowerCase().includes(a.name.toLowerCase()))) && (
+                        <div className="mb-3 p-3 bg-danger-bg border border-danger/30 rounded-lg flex items-start gap-2">
+                          <AlertTriangle size={16} className="text-danger mt-0.5 shrink-0" />
+                          <span className="text-sm text-danger-text font-medium">
+                            Warning: Medication conflicts with patient allergy
+                          </span>
+                        </div>
+                      )}
                       <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2 mb-3">
                         <Pill size={16} className="text-primary" /> Recommended Medications
                       </h3>
@@ -575,7 +574,6 @@ export const DiagnosticEngine = () => {
           <div className="flex-1 overflow-y-auto">
             {activeTab === 'symptoms' && renderSymptomsTab()}
             {activeTab === 'domains' && renderDomainsTab()}
-            {activeTab === 'diseases' && renderDiseasesTab()}
             {activeTab === 'ai' && renderAITab()}
           </div>
         </>

@@ -19,6 +19,7 @@ interface CommandItem {
 
 export const CommandPalette = () => {
   const [query, setQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { setCommandPaletteOpen, setActiveView } = useAppStore();
@@ -70,6 +71,10 @@ export const CommandPalette = () => {
     return commands.filter((c) => c.label.toLowerCase().includes(q)).slice(0, 15);
   }, [query, commands]);
 
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [filtered]);
+
   const groupedResults = useMemo(() => {
     const groups: Record<string, CommandItem[]> = {};
     for (const item of filtered) {
@@ -81,6 +86,21 @@ export const CommandPalette = () => {
 
   const handleSelect = (item: CommandItem) => {
     item.action();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev < filtered.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filtered[selectedIndex]) {
+        handleSelect(filtered[selectedIndex]);
+      }
+    }
   };
 
   return (
@@ -101,6 +121,7 @@ export const CommandPalette = () => {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="Search symptoms, diseases, navigate..."
             className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-faint outline-none"
           />
@@ -120,17 +141,21 @@ export const CommandPalette = () => {
                 <div className="px-4 py-1.5">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-text-faint">{category}</span>
                 </div>
-                {items.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleSelect(item)}
-                    className="w-full flex items-center gap-3 px-4 py-2 hover:bg-primary-bg text-left transition-colors group"
-                  >
-                    <span className="text-text-muted group-hover:text-primary">{item.icon}</span>
-                    <span className="flex-1 text-sm text-text-secondary group-hover:text-text-primary truncate">{item.label}</span>
-                    <ArrowRight className="w-3.5 h-3.5 text-text-faint opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                ))}
+                {items.map((item) => {
+                  const absoluteIndex = filtered.findIndex(f => f.id === item.id);
+                  const isSelected = absoluteIndex === selectedIndex;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleSelect(item)}
+                      className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors group ${isSelected ? 'bg-primary-bg' : 'hover:bg-primary-bg'}`}
+                    >
+                      <span className={isSelected ? 'text-primary' : 'text-text-muted group-hover:text-primary'}>{item.icon}</span>
+                      <span className={`flex-1 text-sm truncate ${isSelected ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'}`}>{item.label}</span>
+                      <ArrowRight className={`w-3.5 h-3.5 transition-opacity ${isSelected ? 'opacity-100 text-primary' : 'text-text-faint opacity-0 group-hover:opacity-100'}`} />
+                    </button>
+                  );
+                })}
               </div>
             ))
           )}

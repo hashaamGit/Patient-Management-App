@@ -170,10 +170,10 @@ export const LabResultsViewer = () => {
               {viewMode === 'cards' ? <FileText className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
               {viewMode === 'cards' ? 'Flowsheet View' : 'Card View'}
             </button>
-            <button className="btn border border-border bg-canvas hover:bg-border px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2">
+            <button onClick={() => window.print()} className="btn border border-border bg-canvas hover:bg-border px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2">
               <Printer className="w-4 h-4" /> Print
             </button>
-            <button className="btn border border-border bg-canvas hover:bg-border px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2">
+            <button onClick={() => window.print()} className="btn border border-border bg-canvas hover:bg-border px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2">
               <Download className="w-4 h-4" /> Export PDF
             </button>
             <button 

@@ -5,15 +5,17 @@ import { PatientContextBar } from './PatientContextBar';
 import { CommandPalette } from './CommandPalette';
 import { ClinicalWorkspace } from './ClinicalWorkspace';
 import { VitalsDashboard } from './VitalsDashboard';
+import { InsightsDashboard } from './InsightsDashboard';
 import { LabResultsViewer } from './LabResultsViewer';
 import { SOAPNotes } from './SOAPNotes';
 import { OrderEntry } from './OrderEntry';
 import { PatientHistory } from './PatientHistory';
 import { SettingsPanel } from './SettingsPanel';
+import { LoginScreen } from './LoginScreen';
 import { useAppStore } from '../store/useAppStore';
 
 export const AppShell = () => {
-  const { sidebarCollapsed, commandPaletteOpen, setCommandPaletteOpen } = useAppStore();
+  const { sidebarCollapsed, commandPaletteOpen, setCommandPaletteOpen, currentUser } = useAppStore();
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -32,6 +34,20 @@ export const AppShell = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [commandPaletteOpen, setCommandPaletteOpen]);
 
+  if (!currentUser) {
+    return <LoginScreen />;
+  }
+
+  const getDefaultRoute = () => {
+    switch (currentUser.role) {
+      case 'Doctor': return '/workspace';
+      case 'Nurse': return '/dashboard';
+      case 'Pharmacist': return '/orders';
+      case 'Admin': return '/settings';
+      default: return '/workspace';
+    }
+  };
+
   return (
     <div className="h-screen w-full flex overflow-hidden bg-canvas font-sans">
       {/* Left Sidebar Navigation */}
@@ -45,8 +61,9 @@ export const AppShell = () => {
         {/* Route Content */}
         <main className="flex-1 overflow-hidden">
           <Routes>
-            <Route path="/" element={<Navigate to="/workspace" replace />} />
-            <Route path="/dashboard" element={<VitalsDashboard />} />
+            <Route path="/" element={<Navigate to={getDefaultRoute()} replace />} />
+            <Route path="/dashboard" element={<InsightsDashboard />} />
+            <Route path="/vitals" element={<VitalsDashboard />} />
             <Route path="/workspace" element={<ClinicalWorkspace />} />
             <Route path="/labs" element={<LabResultsViewer />} />
             <Route path="/notes" element={<SOAPNotes />} />

@@ -3,7 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import { FileText, ChevronDown, ChevronUp, Save, RotateCcw, Clipboard, Stethoscope, Target, ClipboardList, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export const SOAPNotes = () => {
-  const { soapNote, updateSOAPSection, resetSOAPNote, patient, prescription } = useAppStore();
+  const { soapNote, updateSOAPSection, resetSOAPNote, patient, prescription, saveCurrentCase } = useAppStore();
   
   const [expanded, setExpanded] = useState({
     S: true,
@@ -103,7 +103,13 @@ export const SOAPNotes = () => {
               <RotateCcw className="w-4 h-4" />
               Reset
             </button>
-            <button className="flex items-center gap-2 px-4 py-1.5 bg-primary text-white hover:bg-primary/90 rounded-md text-sm font-medium transition-colors">
+            <button 
+              onClick={() => {
+                saveCurrentCase();
+                alert('SOAP Note saved successfully!');
+              }}
+              className="flex items-center gap-2 px-4 py-1.5 bg-primary text-white hover:bg-primary/90 rounded-md text-sm font-medium transition-colors"
+            >
               <Save className="w-4 h-4" />
               Save Note
             </button>

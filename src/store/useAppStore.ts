@@ -103,6 +103,14 @@ interface AppState {
   // Session
   clearSession: () => void;
 
+  // Auth & RBAC
+  currentUser: { name: string; role: 'Doctor' | 'Nurse' | 'Pharmacist' | 'Admin' } | null;
+  login: (name: string, role: 'Doctor' | 'Nurse' | 'Pharmacist' | 'Admin') => void;
+  logout: () => void;
+
+  // Custom Templates
+  customTemplates: any[];
+
   // Command Palette
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (open: boolean) => void;
@@ -257,6 +265,14 @@ export const useAppStore = create<AppState>()(
           orders: [],
         }),
 
+      // ---- Auth & RBAC ----
+      currentUser: null,
+      login: (name, role) => set({ currentUser: { name, role } }),
+      logout: () => set({ currentUser: null }),
+
+      // ---- Custom Templates ----
+      customTemplates: [],
+
       // ---- Command Palette ----
       commandPaletteOpen: false,
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
@@ -268,6 +284,7 @@ export const useAppStore = create<AppState>()(
     {
       name: 'clinrail-v4-storage',
       partialize: (state) => ({
+        currentUser: state.currentUser,
         savedCases: state.savedCases,
         doctorProfile: state.doctorProfile,
         sidebarCollapsed: state.sidebarCollapsed,
@@ -275,6 +292,9 @@ export const useAppStore = create<AppState>()(
         prescription: state.prescription,
         patientHistory: state.patientHistory,
         darkMode: state.darkMode,
+        soapNote: state.soapNote,
+        orders: state.orders,
+        customTemplates: state.customTemplates,
       }),
     }
   )

@@ -9,6 +9,7 @@ import {
 const NAV_ITEMS = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: '⌘1' },
   { path: '/workspace', label: 'Clinical Workspace', icon: Stethoscope, shortcut: '⌘2' },
+  { path: '/vitals', label: 'Vitals', icon: Activity, shortcut: '⌘7' },
   { path: '/labs', label: 'Laboratory', icon: FlaskConical, shortcut: '⌘3' },
   { path: '/notes', label: 'SOAP Notes', icon: FileText, shortcut: '⌘4' },
   { path: '/orders', label: 'Orders', icon: ClipboardList, shortcut: '⌘5' },
@@ -18,7 +19,20 @@ const NAV_ITEMS = [
 export const NavigationSidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { sidebarCollapsed, toggleSidebar, clearSession, setCommandPaletteOpen, darkMode, toggleDarkMode } = useAppStore();
+  const { sidebarCollapsed, toggleSidebar, clearSession, setCommandPaletteOpen, darkMode, toggleDarkMode, currentUser, logout } = useAppStore();
+
+  const getFilteredNavItems = () => {
+    if (!currentUser) return [];
+    switch (currentUser.role) {
+      case 'Doctor': return NAV_ITEMS;
+      case 'Nurse': return NAV_ITEMS.filter(i => ['/dashboard', '/vitals', '/orders', '/history'].includes(i.path));
+      case 'Pharmacist': return NAV_ITEMS.filter(i => ['/dashboard', '/orders'].includes(i.path));
+      case 'Admin': return NAV_ITEMS.filter(i => ['/dashboard'].includes(i.path));
+      default: return [];
+    }
+  };
+
+  const filteredNavItems = getFilteredNavItems();
 
   return (
     <aside
@@ -63,7 +77,7 @@ export const NavigationSidebar = () => {
         {!sidebarCollapsed && (
           <div className="section-header px-3 pt-1 pb-2 text-[#64748B]">Clinical</div>
         )}
-        {NAV_ITEMS.map((item) => {
+        {filteredNavItems.map((item) => {
           const isActive = location.pathname === item.path;
           const Icon = item.icon;
           return (
@@ -107,14 +121,14 @@ export const NavigationSidebar = () => {
           {!sidebarCollapsed && <span className="flex-1 text-left">{darkMode ? 'Light Mode' : 'Dark Mode'}</span>}
         </button>
 
-        {/* New Session */}
+        {/* New Session (Logout) */}
         <button
-          onClick={clearSession}
+          onClick={logout}
           className={`nav-item w-full text-danger hover:text-danger hover:bg-[#1E293B] ${sidebarCollapsed ? 'justify-center px-0' : ''}`}
-          title={sidebarCollapsed ? 'Clear Session' : undefined}
+          title={sidebarCollapsed ? 'Log Out' : undefined}
         >
           <LogOut className="w-[18px] h-[18px] flex-shrink-0" />
-          {!sidebarCollapsed && <span className="flex-1 text-left">New Session</span>}
+          {!sidebarCollapsed && <span className="flex-1 text-left">Log Out</span>}
         </button>
 
         {/* Collapse Toggle */}
@@ -135,13 +149,13 @@ export const NavigationSidebar = () => {
 
         {/* Doctor Badge */}
         <div className={`flex items-center gap-2.5 pt-2 mt-1 border-t border-[#1E293B] ${sidebarCollapsed ? 'justify-center' : 'px-2'}`}>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ring-2 ring-primary-light/30">
-            HA
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ring-2 ring-primary-light/30 uppercase">
+            {currentUser?.name?.substring(0, 2) || 'U'}
           </div>
           {!sidebarCollapsed && (
             <div className="min-w-0">
-              <div className="text-white text-xs font-medium truncate">Dr. Hassan Aqeel</div>
-              <div className="text-[#64748B] text-[10px] truncate">Internal Medicine</div>
+              <div className="text-white text-xs font-medium truncate">{currentUser?.name || 'Unknown User'}</div>
+              <div className="text-[#64748B] text-[10px] truncate">{currentUser?.role || 'Unknown Role'}</div>
             </div>
           )}
         </div>

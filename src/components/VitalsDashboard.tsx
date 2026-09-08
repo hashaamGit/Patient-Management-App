@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { 
   Heart, Activity, Thermometer, Wind, Gauge, Scale, 
@@ -63,9 +63,32 @@ const VitalCard = ({
 );
 
 export const VitalsDashboard = () => {
-  const patient = useAppStore(state => state.patient);
+  const { patient, setPatientField } = useAppStore();
+
+  const [formBP, setFormBP] = useState('');
+  const [formHR, setFormHR] = useState('');
+  const [formSpO2, setFormSpO2] = useState('');
+  const [formTemp, setFormTemp] = useState('');
+  const [formResp, setFormResp] = useState('');
+  const [formPain, setFormPain] = useState('');
 
   if (!patient) return null;
+
+  const handleRecord = () => {
+    if (formBP) setPatientField('bp', formBP);
+    if (formHR) setPatientField('pulse', formHR);
+    if (formSpO2) setPatientField('spo2', formSpO2);
+    if (formTemp) setPatientField('temperature', formTemp);
+    if (formResp) setPatientField('respiratoryRate', formResp);
+    if (formPain) setPatientField('painScore', formPain);
+
+    setFormBP('');
+    setFormHR('');
+    setFormSpO2('');
+    setFormTemp('');
+    setFormResp('');
+    setFormPain('');
+  };
 
   // Extract / parse vitals
   const [sysStr, diaStr] = (patient.bp || '120/80').split('/');
@@ -344,30 +367,30 @@ export const VitalsDashboard = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
           <div>
             <label className="block text-xs font-semibold text-text-secondary mb-1">BP (mmHg)</label>
-            <input type="text" placeholder="120/80" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
+            <input value={formBP} onChange={e => setFormBP(e.target.value)} type="text" placeholder="120/80" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-text-secondary mb-1">HR (bpm)</label>
-            <input type="number" placeholder="75" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
+            <input value={formHR} onChange={e => setFormHR(e.target.value)} type="number" placeholder="75" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-text-secondary mb-1">SpO₂ (%)</label>
-            <input type="number" placeholder="98" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
+            <input value={formSpO2} onChange={e => setFormSpO2(e.target.value)} type="number" placeholder="98" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-text-secondary mb-1">Temp (°C)</label>
-            <input type="number" step="0.1" placeholder="37.0" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
+            <input value={formTemp} onChange={e => setFormTemp(e.target.value)} type="number" step="0.1" placeholder="37.0" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-text-secondary mb-1">Resp (rpm)</label>
-            <input type="number" placeholder="16" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
+            <input value={formResp} onChange={e => setFormResp(e.target.value)} type="number" placeholder="16" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-text-secondary mb-1">Pain (0-10)</label>
-            <input type="number" min="0" max="10" placeholder="0" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
+            <input value={formPain} onChange={e => setFormPain(e.target.value)} type="number" min="0" max="10" placeholder="0" className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors" />
           </div>
           <div className="flex items-end">
-            <button className="w-full bg-primary hover:bg-primary/90 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm">
+            <button onClick={handleRecord} className="w-full bg-primary hover:bg-primary/90 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm">
               <Plus className="w-4 h-4" />
               Record
             </button>

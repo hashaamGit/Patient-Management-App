@@ -24,7 +24,8 @@ export const PrescriptionPanel = () => {
     removeDiagnosis,
     setFollowUpDate,
     saveCurrentCase,
-    resetPrescription
+    resetPrescription,
+    customTemplates
   } = useAppStore();
 
   const [showDoseCalc, setShowDoseCalc] = useState(false);
@@ -111,6 +112,12 @@ export const PrescriptionPanel = () => {
     addPrescriptionItem(item);
   };
 
+  const handleAddTemplate = (template: any) => {
+    template.items.forEach((item: any) => {
+      handleAddItem(item);
+    });
+  };
+
   const confirmOverride = () => {
     if (alertModal?.pendingItem) {
       addPrescriptionItem(alertModal.pendingItem);
@@ -146,6 +153,27 @@ export const PrescriptionPanel = () => {
   };
   const doseResult = calcDose();
 
+  const handleSaveCustomTemplate = () => {
+    if (prescription.items.length === 0) {
+      alert("No medications to save in template.");
+      return;
+    }
+    const templateName = prompt("Enter a name for this custom template:");
+    if (!templateName) return;
+    
+    useAppStore.setState(s => ({
+      customTemplates: [
+        ...s.customTemplates,
+        {
+          id: crypto.randomUUID(),
+          name: templateName,
+          items: prescription.items.map(i => ({ ...i, id: crypto.randomUUID() }))
+        }
+      ]
+    }));
+    alert("Template saved successfully!");
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -161,6 +189,9 @@ export const PrescriptionPanel = () => {
         <div className="flex gap-2">
           <button onClick={saveCurrentCase} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary text-white rounded-md hover:bg-primary/90 transition-colors">
             <Save className="w-4 h-4" /> Save Case
+          </button>
+          <button onClick={handleSaveCustomTemplate} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-surface border border-border text-text-primary rounded-md hover:bg-canvas transition-colors">
+            <Star className="w-4 h-4" /> Save as Custom Template
           </button>
           <button onClick={handlePrint} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-surface border border-border text-text-primary rounded-md hover:bg-canvas transition-colors">
             <Printer className="w-4 h-4" /> Print Rx
@@ -341,6 +372,25 @@ export const PrescriptionPanel = () => {
           
           {showFavorites && (
             <div className="p-3 border-t border-border space-y-3">
+              {customTemplates && customTemplates.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between w-full text-xs font-semibold text-text-muted uppercase tracking-wider mb-1.5">
+                    Custom Templates
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {customTemplates.map((template: any) => (
+                      <button 
+                        key={template.id}
+                        onClick={() => handleAddTemplate(template)}
+                        className="text-xs px-2.5 py-1.5 bg-primary/10 border border-primary/30 text-primary rounded-full hover:bg-primary/20 transition-colors text-left flex items-center gap-1"
+                      >
+                        <Star className="w-3 h-3" /> <span className="font-medium">{template.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {Object.entries(favoritesByCategory).map(([cat, items]) => (
                 <div key={cat}>
                   <button 
