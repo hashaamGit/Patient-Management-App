@@ -207,16 +207,9 @@ export const VitalsDashboard = () => {
               >
                 {/* Background track hack using a full scale bar in gray */}
                 <RadialBar 
-                  data={[{ value: maxNews2Score }]} 
-                  dataKey="value" 
-                  fill="#E2E8F0" 
-                  cornerRadius={10} 
-                  isAnimationActive={false}
-                />
-                <RadialBar 
                   dataKey="value" 
                   cornerRadius={10} 
-                  clockWise 
+                  background={{ fill: '#E2E8F0' }}
                 />
               </RadialBarChart>
             </ResponsiveContainer>

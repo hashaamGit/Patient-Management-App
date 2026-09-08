@@ -26,7 +26,7 @@ export const StorekeeperInventory: React.FC = () => {
     expiryDate: string;
     unitPrice: number;
     sellingPrice: number;
-    equipmentStatus?: 'Operational' | 'Maintenance Required' | 'Calibrated';
+    equipmentStatus?: 'Operational' | 'Maintenance Due' | 'Under Repair';
     location?: string;
   }>({
     name: '',

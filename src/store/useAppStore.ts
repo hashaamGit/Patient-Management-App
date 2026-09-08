@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
   Patient, Prescription, PrescriptionItem, CaseRecord,
-  SOAPNote, Order, OrderType, OrderUrgency, PatientHistory,
+  SOAPNote, Order, PatientHistory,
   DoctorProfile, AppView, Allergy
 } from '../types';
 
@@ -606,9 +606,9 @@ export const useAppStore = create<AppState>()(
             name: pat.name,
             mrn: pat.mrn,
             age: pat.age,
-            gender: pat.gender,
+            gender: pat.gender as any,
             phone: pat.phone,
-            bloodGroup: pat.bloodGroup,
+            bloodGroup: pat.bloodGroup as any,
             bp: pat.vitals?.bp || '',
             temperature: pat.vitals?.temp || '',
             pulse: pat.vitals?.pulse || '',
