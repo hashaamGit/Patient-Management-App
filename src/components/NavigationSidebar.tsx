@@ -3,11 +3,12 @@ import { useAppStore } from '../store/useAppStore';
 import {
   LayoutDashboard, Stethoscope, FlaskConical, FileText,
   ClipboardList, History, Settings, PanelLeftClose, PanelLeft,
-  Activity, Search, LogOut, Moon, Sun, Shield, Pill, Building2
+  Activity, Search, LogOut, Moon, Sun, Shield, Pill, Building2, Users
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { path: '/workspace', label: 'Clinical Workspace', icon: Stethoscope, shortcut: '⌘1' },
+  { path: '/patients', label: 'Patients Directory', icon: Users, shortcut: '⌘8' },
   { path: '/dashboard', label: 'Insights Analytics', icon: LayoutDashboard, shortcut: '⌘2' },
   { path: '/admin', label: 'Admin Console', icon: Shield, shortcut: '⌘A' },
   { path: '/pharmacy', label: 'Pharmacy Dispensary', icon: Pill, shortcut: '⌘P' },
@@ -28,15 +29,15 @@ export const NavigationSidebar = () => {
     if (!currentUser) return [];
     switch (currentUser.role) {
       case 'Doctor':
-        return NAV_ITEMS.filter(i => ['/workspace', '/dashboard', '/vitals', '/labs', '/notes', '/orders', '/history', '/pharmacy'].includes(i.path));
+        return NAV_ITEMS.filter(i => ['/workspace', '/patients', '/dashboard', '/vitals', '/labs', '/notes', '/orders', '/history', '/pharmacy'].includes(i.path));
       case 'Nurse':
-        return NAV_ITEMS.filter(i => ['/vitals', '/dashboard', '/orders', '/history'].includes(i.path));
+        return NAV_ITEMS.filter(i => ['/vitals', '/patients', '/dashboard', '/orders', '/history'].includes(i.path));
       case 'Pharmacist':
         return NAV_ITEMS.filter(i => ['/pharmacy', '/dashboard', '/inventory', '/orders'].includes(i.path));
       case 'Storekeeper':
         return NAV_ITEMS.filter(i => ['/inventory', '/dashboard'].includes(i.path));
       case 'Admin':
-        return NAV_ITEMS.filter(i => ['/admin', '/dashboard', '/workspace', '/inventory', '/pharmacy'].includes(i.path));
+        return NAV_ITEMS.filter(i => ['/admin', '/patients', '/dashboard', '/workspace', '/inventory', '/pharmacy'].includes(i.path));
       default:
         return [];
     }

@@ -6,8 +6,50 @@ import { format } from 'date-fns';
 import {
   Edit2, Save, Printer, Trash2, Plus, AlertTriangle, ShieldAlert,
   ChevronDown, ChevronUp, Pill, Star, X, Calculator, Info,
-  FileText, Clock, CheckCircle2, OctagonAlert
+  FileText, Clock, CheckCircle2, OctagonAlert, DollarSign, Globe
 } from 'lucide-react';
+
+export const URDU_FREQUENCY_MAP: Record<string, { en: string; ur: string }> = {
+  'OD': { en: 'Once daily', ur: 'دن میں ایک بار' },
+  'BD': { en: 'Twice daily (Morning & Night)', ur: 'دن میں دو بار (صبح و شام)' },
+  'TDS': { en: 'Thrice daily (Morning, Noon, Night)', ur: 'دن میں تین بار (صبح، دوپہر، شام)' },
+  'QDS': { en: 'Four times daily', ur: 'دن میں چار بار (ہر 6 گھنٹے بعد)' },
+  'HS': { en: 'At bedtime', ur: 'رات سوتے وقت' },
+  'QHS': { en: 'At bedtime', ur: 'رات سوتے وقت' },
+  'PRN': { en: 'As needed', ur: 'ضرورت کے وقت' },
+  'SOS': { en: 'In emergency / As needed', ur: 'شدید ضرورت پر' },
+  'STAT': { en: 'Immediately', ur: 'فوراً (پہلی خوراک)' },
+  'Q4H': { en: 'Every 4 hours', ur: 'ہر 4 گھنٹے بعد' },
+  'Q6H': { en: 'Every 6 hours', ur: 'ہر 6 گھنٹے بعد' },
+  'Q8H': { en: 'Every 8 hours', ur: 'ہر 8 گھنٹے بعد' },
+  'Weekly': { en: 'Once a week', ur: 'ہفتے میں ایک بار' }
+};
+
+export const getUrduTiming = (instructions?: string, frequency?: string) => {
+  const inst = (instructions || '').toLowerCase();
+  const parts: string[] = [];
+
+  if (inst.includes('after') || inst.includes('post')) {
+    parts.push('کھانے کے بعد');
+  } else if (inst.includes('before') || inst.includes('empty') || inst.includes('prior')) {
+    parts.push('نہار منہ / کھانے سے پہلے');
+  } else if (inst.includes('with food') || inst.includes('with meal')) {
+    parts.push('کھانے کے دوران');
+  }
+
+  if (frequency && URDU_FREQUENCY_MAP[frequency]) {
+    parts.push(URDU_FREQUENCY_MAP[frequency].ur);
+  }
+
+  if (inst.includes('water')) parts.push('زیادہ پانی کے ساتھ');
+  if (inst.includes('milk')) parts.push('دودھ کے ساتھ');
+  if (inst.includes('course')) parts.push('کورس مکمل کریں');
+
+  if (parts.length === 0) {
+    return frequency && URDU_FREQUENCY_MAP[frequency] ? URDU_FREQUENCY_MAP[frequency].ur : 'ہدایت کے مطابق استعمال کریں';
+  }
+  return parts.join(' • ');
+};
 
 export const PrescriptionPanel = () => {
   const {
@@ -25,7 +67,10 @@ export const PrescriptionPanel = () => {
     setFollowUpDate,
     saveCurrentCase,
     resetPrescription,
-    customTemplates
+    customTemplates,
+    inventory,
+    prescriptionLanguage,
+    setPrescriptionLanguage
   } = useAppStore();
 
   const [showDoseCalc, setShowDoseCalc] = useState(false);
@@ -154,6 +199,23 @@ export const PrescriptionPanel = () => {
   };
   const doseResult = calcDose();
 
+  const getItemPrice = (item: any) => {
+    const searchBrand = (item.brandName || '').toLowerCase().trim();
+    const searchGeneric = (item.genericName || '').toLowerCase().trim();
+    const match = inventory.find(inv => {
+      const name = inv.name.toLowerCase();
+      return (searchBrand && name.includes(searchBrand)) || (searchGeneric && name.includes(searchGeneric));
+    });
+    return match ? (match.sellingPrice || match.unitPrice || 0) : null;
+  };
+
+  const totalEstimatedPrice = useMemo(() => {
+    return prescription.items.reduce((acc, item) => {
+      const p = getItemPrice(item);
+      return acc + (p || 0);
+    }, 0);
+  }, [prescription.items, inventory]);
+
   const handleSaveCustomTemplate = () => {
     if (prescription.items.length === 0) {
       alert("No medications to save in template.");
@@ -182,22 +244,56 @@ export const PrescriptionPanel = () => {
   return (
     <div className="h-full flex flex-col overflow-hidden bg-canvas">
       {/* HEADER */}
-      <div className="flex items-center justify-between p-3 border-b border-border bg-surface print:hidden">
-        <div className="flex items-center gap-2">
-          <Edit2 className="w-5 h-5 text-primary" />
-          <h2 className="font-semibold text-text-primary">Live Rx Pad</h2>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 gap-2 border-b border-border bg-surface print:hidden">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Edit2 className="w-5 h-5 text-primary" />
+            <h2 className="font-semibold text-text-primary">Live Rx Pad</h2>
+          </div>
+
+          {/* Bilingual Language Switcher */}
+          <div className="flex items-center bg-canvas p-0.5 rounded-lg border border-border text-[11px] font-semibold">
+            <button
+              onClick={() => setPrescriptionLanguage('both')}
+              className={`px-2 py-1 rounded transition-colors ${prescriptionLanguage === 'both' ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
+              title="Dual English and Urdu Instructions"
+            >
+              Eng + اردو
+            </button>
+            <button
+              onClick={() => setPrescriptionLanguage('english')}
+              className={`px-2 py-1 rounded transition-colors ${prescriptionLanguage === 'english' ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
+            >
+              English
+            </button>
+            <button
+              onClick={() => setPrescriptionLanguage('urdu')}
+              className={`px-2 py-1 rounded transition-colors ${prescriptionLanguage === 'urdu' ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
+            >
+              اردو
+            </button>
+          </div>
+
+          {/* Estimated Rx Cost Pill */}
+          {totalEstimatedPrice > 0 && (
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-xs font-bold">
+              <DollarSign className="w-3.5 h-3.5" />
+              <span>Est. Cost: ₨ {totalEstimatedPrice.toLocaleString()}</span>
+            </div>
+          )}
         </div>
-        <div className="flex gap-2">
-          <button onClick={saveCurrentCase} className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary text-white rounded-md hover:bg-primary/90 transition-colors">
-            <Save className="w-4 h-4" /> Save Case
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={saveCurrentCase} className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
+            <Save className="w-3.5 h-3.5" /> Save Case
           </button>
-          <button onClick={handleSaveCustomTemplate} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-surface border border-border text-text-primary rounded-md hover:bg-canvas transition-colors">
-            <Star className="w-4 h-4" /> Save as Template
+          <button onClick={handleSaveCustomTemplate} className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-surface border border-border text-text-primary rounded-lg hover:bg-canvas transition-colors">
+            <Star className="w-3.5 h-3.5" /> Template
           </button>
-          <button onClick={() => setShowPrintModal(true)} className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-primary hover:bg-primary/90 text-white rounded-md shadow-sm transition-colors">
-            <Printer className="w-4 h-4" /> Preview &amp; Print / PDF
+          <button onClick={() => setShowPrintModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-colors">
+            <Printer className="w-3.5 h-3.5" /> Print / PDF Slip
           </button>
-          <button onClick={resetPrescription} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-surface border border-danger text-danger rounded-md hover:bg-danger-bg transition-colors">
+          <button onClick={resetPrescription} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-surface border border-danger text-danger rounded-lg hover:bg-danger-bg transition-colors">
             <Trash2 className="w-3.5 h-3.5" /> Clear
           </button>
         </div>
@@ -312,6 +408,11 @@ export const PrescriptionPanel = () => {
                         <span className="font-semibold text-text-primary text-sm truncate">{item.brandName || item.genericName}</span>
                         {item.brandName && <span className="text-xs text-text-muted truncate">{item.genericName}</span>}
                         <span className="text-sm font-medium clinical-num ml-auto">{item.strength}</span>
+                        {getItemPrice(item) && (
+                          <span className="text-[11px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                            ₨ {getItemPrice(item)}
+                          </span>
+                        )}
                       </div>
                       
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm mt-1.5">
@@ -338,8 +439,18 @@ export const PrescriptionPanel = () => {
                         </div>
                       </div>
 
+                      {/* Bilingual Instructions / Urdu */}
+                      {(prescriptionLanguage === 'both' || prescriptionLanguage === 'urdu') && (
+                        <div className="mt-1.5 p-1.5 rounded bg-emerald-500/5 border border-emerald-500/15 flex items-center justify-between text-xs">
+                          <span className="text-[11px] font-bold text-emerald-700">طریقہ استعمال:</span>
+                          <span className="text-emerald-800 font-semibold" dir="rtl">
+                            {getUrduTiming(item.instructions, item.frequency)}
+                          </span>
+                        </div>
+                      )}
+
                       {(item.instructions || item.indication) && (
-                        <div className="mt-2 text-xs text-text-muted flex flex-wrap gap-3">
+                        <div className="mt-1 text-xs text-text-muted flex flex-wrap gap-3">
                           {item.instructions && <span className="italic">"{item.instructions}"</span>}
                           {item.indication && <span className="badge bg-canvas border border-border">For: {item.indication}</span>}
                         </div>
@@ -586,7 +697,10 @@ export const PrescriptionPanel = () => {
             <div className="p-4 border-b border-border flex items-center justify-between bg-canvas">
               <div className="flex items-center gap-2">
                 <Printer className="w-5 h-5 text-primary" />
-                <h3 className="font-bold text-text-primary text-base">Hassan and Co. Prescription Slip Preview</h3>
+                <h3 className="font-bold text-text-primary text-base">Hassan and Co. Official Bilingual Prescription Slip</h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                  {prescriptionLanguage === 'both' ? 'English + اردو' : prescriptionLanguage === 'urdu' ? 'اردو Only' : 'English Only'}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -635,12 +749,13 @@ export const PrescriptionPanel = () => {
                   <div><span className="text-slate-500">Date:</span> {format(new Date(), 'dd MMM yyyy')}</div>
                   {patient.bp && <div><span className="text-slate-500">BP:</span> {patient.bp} mmHg</div>}
                   {patient.temperature && <div><span className="text-slate-500">Temp:</span> {patient.temperature} °C</div>}
+                  {patient.weight && <div><span className="text-slate-500">Weight:</span> {patient.weight} kg</div>}
                 </div>
 
                 {/* Diagnosis */}
                 {prescription.diagnosis.length > 0 && (
                   <div className="bg-slate-50 p-2.5 rounded border border-slate-200 text-xs">
-                    <span className="font-bold text-slate-700 uppercase">Diagnosis: </span>
+                    <span className="font-bold text-slate-700 uppercase">Diagnosis / تشخیص: </span>
                     <strong className="text-black">{prescription.diagnosis.join(', ')}</strong>
                   </div>
                 )}
@@ -648,69 +763,106 @@ export const PrescriptionPanel = () => {
                 {/* Rx Symbol */}
                 <div className="text-3xl font-serif font-bold italic text-slate-900">℞</div>
 
-                {/* Medications */}
+                {/* Medications Table with Urdu Translations */}
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b-2 border-slate-900 font-bold uppercase text-slate-800">
                       <th className="py-1.5 pr-2 w-6">#</th>
                       <th className="py-1.5 px-2">Drug Name</th>
-                      <th className="py-1.5 px-2">Form</th>
                       <th className="py-1.5 px-2">Dosage & Frequency</th>
+                      {(prescriptionLanguage === 'both' || prescriptionLanguage === 'urdu') && (
+                        <th className="py-1.5 px-2 text-right">طریقہ استعمال (Urdu Instructions)</th>
+                      )}
                       <th className="py-1.5 px-2">Duration</th>
-                      <th className="py-1.5 pl-2">Instructions</th>
+                      <th className="py-1.5 pl-2 text-right">Est. Price</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {prescription.items.map((item, idx) => (
-                      <tr key={item.id || idx}>
-                        <td className="py-2 pr-2 font-bold text-slate-500">{idx + 1}</td>
-                        <td className="py-2 px-2">
-                          <div className="font-bold text-black">{item.brandName || item.genericName}</div>
-                          <div className="text-[10px] text-teal-700 font-semibold">{item.strength}</div>
-                        </td>
-                        <td className="py-2 px-2 text-slate-600">{item.form}</td>
-                        <td className="py-2 px-2">
-                          <span className="font-bold text-black">{item.dosage}</span>
-                          <div className="text-[10px] text-slate-500">{item.frequency} • {item.route}</div>
-                        </td>
-                        <td className="py-2 px-2 text-slate-700 font-medium">{item.duration}</td>
-                        <td className="py-2 pl-2 italic text-slate-600">{item.instructions || 'As directed'}</td>
-                      </tr>
-                    ))}
+                    {prescription.items.map((item, idx) => {
+                      const itemPrice = getItemPrice(item);
+                      return (
+                        <tr key={item.id || idx}>
+                          <td className="py-2.5 pr-2 font-bold text-slate-500">{idx + 1}</td>
+                          <td className="py-2.5 px-2">
+                            <div className="font-bold text-black">{item.brandName || item.genericName}</div>
+                            <div className="text-[10px] text-teal-700 font-semibold">{item.strength} • {item.form}</div>
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <span className="font-bold text-black">{item.dosage}</span>
+                            <div className="text-[10px] text-slate-500">{item.frequency} • {item.route}</div>
+                          </td>
+                          {(prescriptionLanguage === 'both' || prescriptionLanguage === 'urdu') && (
+                            <td className="py-2.5 px-2 text-right font-medium text-emerald-900" dir="rtl">
+                              {getUrduTiming(item.instructions, item.frequency)}
+                            </td>
+                          )}
+                          <td className="py-2.5 px-2 text-slate-700 font-medium">{item.duration}</td>
+                          <td className="py-2.5 pl-2 text-right font-semibold text-slate-800">
+                            {itemPrice ? `₨ ${itemPrice}` : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {prescription.items.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-4 text-center text-slate-400 italic">No medications recorded.</td>
                       </tr>
                     )}
                   </tbody>
+                  {totalEstimatedPrice > 0 && (
+                    <tfoot>
+                      <tr className="border-t-2 border-slate-900 text-xs font-bold">
+                        <td colSpan={prescriptionLanguage === 'english' ? 4 : 5} className="py-2 text-right text-slate-700 uppercase">
+                          Estimated Total Pharmacy Cost:
+                        </td>
+                        <td className="py-2 pl-2 text-right text-emerald-700 text-sm">
+                          ₨ {totalEstimatedPrice.toLocaleString()}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
 
                 {/* Advice & Labs */}
                 <div className="grid grid-cols-2 gap-4 border-t border-slate-200 pt-3 text-xs">
                   <div>
-                    <h5 className="font-bold text-slate-700 uppercase mb-1">Advice:</h5>
-                    <p className="text-slate-700 whitespace-pre-line">{prescription.advice || 'Standard balanced diet & rest.'}</p>
+                    <h5 className="font-bold text-slate-700 uppercase mb-1">Diet & Lifestyle Advice / پرہیز و ہدایات:</h5>
+                    <p className="text-slate-800 whitespace-pre-line leading-relaxed">
+                      {prescription.advice || 'Standard balanced diet, hydration, and rest.'}
+                    </p>
+                    <p className="text-emerald-900 mt-1 font-medium text-[11px]" dir="rtl">
+                      مناسب آرام، پانی کا کثرت سے استعمال اور غذائی پرہیز کا خاص خیال رکھیں۔
+                    </p>
                   </div>
                   <div>
-                    <h5 className="font-bold text-slate-700 uppercase mb-1">Investigations:</h5>
+                    <h5 className="font-bold text-slate-700 uppercase mb-1">Investigations / ٹیسٹ:</h5>
                     {prescription.labs.length > 0 ? (
-                      <ul className="list-disc list-inside text-slate-700">
+                      <ul className="list-disc list-inside text-slate-700 space-y-0.5">
                         {prescription.labs.map((l, i) => <li key={i}>{l}</li>)}
                       </ul>
                     ) : (
-                      <p className="text-slate-400 italic">None.</p>
+                      <p className="text-slate-400 italic">None ordered.</p>
                     )}
                   </div>
                 </div>
 
                 {/* Footer Signature */}
                 <div className="border-t border-slate-200 pt-4 flex justify-between items-end text-xs">
-                  <div className="text-slate-500">
-                    {prescription.followUpDate ? `Review on: ${format(new Date(prescription.followUpDate), 'dd MMM yyyy')}` : 'Review as needed.'}
+                  <div>
+                    <div className="text-slate-700 font-semibold">
+                      {prescription.followUpDate ? (
+                        <span>Follow-up Date / اگلی تاریخ: {format(new Date(prescription.followUpDate), 'dd MMM yyyy')}</span>
+                      ) : (
+                        'Review as needed / ضرورت پڑنے پر رابطہ کریں۔'
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1 font-mono">
+                      Hassan and Co. EMR • Valid Electronic Prescription Slip
+                    </div>
                   </div>
                   <div className="text-center">
-                    <div className="w-40 border-b border-slate-900 mb-1"></div>
-                    <span className="font-bold text-black text-[11px]">Doctor Signature</span>
+                    <div className="w-44 border-b-2 border-slate-900 mb-1"></div>
+                    <span className="font-bold text-black text-[11px]">Doctor Signature &amp; Stamp</span>
                   </div>
                 </div>
 
@@ -722,7 +874,7 @@ export const PrescriptionPanel = () => {
       )}
 
       {/* ============ PRINT TEMPLATE (Activated in Print Mode & PDF Export) ============ */}
-      <div className="print-prescription-slip hidden print:block p-8 bg-white text-black min-h-screen font-sans">
+      <div className="print-prescription-slip p-8 bg-white text-black min-h-screen font-sans">
         
         {/* Hospital & Doctor Letterhead */}
         <div className="border-b-2 border-slate-900 pb-4 mb-6 flex justify-between items-start">
@@ -756,7 +908,7 @@ export const PrescriptionPanel = () => {
         {/* Diagnoses */}
         {prescription.diagnosis.length > 0 && (
           <div className="mb-5 bg-slate-50 p-3 rounded border border-slate-200">
-            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-1">Clinical Assessment / Diagnosis:</h4>
+            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-1">Clinical Assessment / Diagnosis (تشخیص):</h4>
             <p className="text-sm font-semibold text-slate-900">{prescription.diagnosis.join(' • ')}</p>
           </div>
         )}
@@ -764,38 +916,61 @@ export const PrescriptionPanel = () => {
         {/* Rx Symbol */}
         <div className="text-4xl font-serif font-bold italic text-slate-900 mb-3">℞</div>
 
-        {/* Medications Table */}
+        {/* Medications Table with Urdu Instructions */}
         <div className="mb-6">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b-2 border-slate-900 text-xs font-bold uppercase text-slate-800">
                 <th className="py-2 pr-2 w-8">#</th>
                 <th className="py-2 px-2">Medication & Strength</th>
-                <th className="py-2 px-2">Form</th>
-                <th className="py-2 px-2">Dosage & Frequency</th>
+                <th className="py-2 px-2">Dosage & Timing</th>
+                {(prescriptionLanguage === 'both' || prescriptionLanguage === 'urdu') && (
+                  <th className="py-2 px-2 text-right">ہدایات برائے مریض (Urdu Instructions)</th>
+                )}
                 <th className="py-2 px-2">Duration</th>
-                <th className="py-2 pl-2">Physician Instructions</th>
+                <th className="py-2 pl-2 text-right">Est. Price</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-xs">
-              {prescription.items.map((item, idx) => (
-                <tr key={item.id || idx} className="align-top">
-                  <td className="py-2.5 pr-2 font-bold text-slate-600">{idx + 1}</td>
-                  <td className="py-2.5 px-2">
-                    <div className="font-bold text-sm text-black">{item.brandName || item.genericName}</div>
-                    {item.brandName && <div className="text-[10px] text-slate-500">{item.genericName}</div>}
-                    <div className="text-[11px] font-semibold text-teal-800">{item.strength}</div>
-                  </td>
-                  <td className="py-2.5 px-2 text-slate-700">{item.form}</td>
-                  <td className="py-2.5 px-2 whitespace-nowrap">
-                    <span className="font-bold text-black">{item.dosage}</span>
-                    <div className="text-[11px] text-slate-600">{item.frequency} • {item.route}</div>
-                  </td>
-                  <td className="py-2.5 px-2 font-medium text-slate-800">{item.duration}</td>
-                  <td className="py-2.5 pl-2 italic text-slate-700">{item.instructions || 'As directed'}</td>
-                </tr>
-              ))}
+              {prescription.items.map((item, idx) => {
+                const itemPrice = getItemPrice(item);
+                return (
+                  <tr key={item.id || idx} className="align-top">
+                    <td className="py-2.5 pr-2 font-bold text-slate-600">{idx + 1}</td>
+                    <td className="py-2.5 px-2">
+                      <div className="font-bold text-sm text-black">{item.brandName || item.genericName}</div>
+                      {item.brandName && <div className="text-[10px] text-slate-500">{item.genericName}</div>}
+                      <div className="text-[11px] font-semibold text-teal-800">{item.strength} • {item.form}</div>
+                    </td>
+                    <td className="py-2.5 px-2 whitespace-nowrap">
+                      <span className="font-bold text-black">{item.dosage}</span>
+                      <div className="text-[11px] text-slate-600">{item.frequency} • {item.route}</div>
+                    </td>
+                    {(prescriptionLanguage === 'both' || prescriptionLanguage === 'urdu') && (
+                      <td className="py-2.5 px-2 text-right font-medium text-emerald-950" dir="rtl">
+                        {getUrduTiming(item.instructions, item.frequency)}
+                      </td>
+                    )}
+                    <td className="py-2.5 px-2 font-medium text-slate-800">{item.duration}</td>
+                    <td className="py-2.5 pl-2 text-right font-semibold text-slate-800">
+                      {itemPrice ? `₨ ${itemPrice}` : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
+            {totalEstimatedPrice > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-slate-900 text-xs font-bold">
+                  <td colSpan={prescriptionLanguage === 'english' ? 4 : 5} className="py-2.5 text-right text-slate-700 uppercase">
+                    Estimated Total Pharmacy Bill:
+                  </td>
+                  <td className="py-2.5 pl-2 text-right text-emerald-700 text-sm">
+                    ₨ {totalEstimatedPrice.toLocaleString()}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
           {prescription.items.length === 0 && (
             <div className="py-6 text-center text-slate-400 italic text-xs border-b border-slate-200">
@@ -807,8 +982,11 @@ export const PrescriptionPanel = () => {
         {/* Advice & Labs */}
         <div className="grid grid-cols-2 gap-6 mb-6 border-t border-slate-300 pt-4 text-xs">
           <div>
-            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-1.5">Diet & Lifestyle Advice:</h4>
+            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-1.5">Diet & Lifestyle Advice / ہدایات:</h4>
             <p className="text-slate-800 whitespace-pre-line leading-relaxed">{prescription.advice || 'Standard balanced diet, adequate hydration, and rest.'}</p>
+            <p className="text-emerald-900 mt-1 font-medium text-[11px]" dir="rtl">
+              مناسب آرام، پانی کا کثرت سے استعمال اور غذائی پرہیز کا خاص خیال رکھیں۔
+            </p>
           </div>
           <div>
             <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-1.5">Diagnostic Labs / Investigations:</h4>
@@ -827,11 +1005,11 @@ export const PrescriptionPanel = () => {
           <div>
             {prescription.followUpDate ? (
               <div>
-                <span className="font-bold text-slate-700">Follow-up Appointment:</span>{' '}
+                <span className="font-bold text-slate-700">Follow-up Appointment / اگلی تاریخ:</span>{' '}
                 <span className="font-bold text-sm text-teal-800">{format(new Date(prescription.followUpDate), 'dd MMMM, yyyy')}</span>
               </div>
             ) : (
-              <div className="text-slate-500 italic">Review as needed or if symptoms persist.</div>
+              <div className="text-slate-500 italic">Review as needed or if symptoms persist / ضرورت پڑنے پر رجوع کریں۔</div>
             )}
             <div className="text-[10px] text-slate-400 mt-3 font-mono">
               Hassan and Co. EMR • Valid Electronic Prescription Slip

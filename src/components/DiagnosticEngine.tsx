@@ -110,12 +110,92 @@ const getIcdCode = (disease: string, idx: number): string => {
   return `${prefix}${num}.${sub}`;
 };
 
+export const COMMON_SYMPTOMS = [
+  'Fever',
+  'Cough',
+  'Chest Pain',
+  'Headache',
+  'Shortness of Breath',
+  'Abdominal Pain',
+  'Fatigue',
+  'Nausea & Vomiting',
+  'Dizziness',
+  'Sore Throat',
+  'Diarrhea',
+  'Joint Pain',
+  'Skin Rash',
+  'Back Pain',
+  'Palpitations',
+  'Dysuria'
+];
+
+export const LAB_RATIONALE_MAP: Record<string, string> = {
+  'CBC': 'Detect infection & anemia',
+  'Complete Blood Count': 'Assess hematology & sepsis',
+  'Chest X-Ray': 'Rule out consolidation',
+  'ECG': 'Rule out acute ischemia',
+  'Troponin': 'Detect myocardial injury',
+  'Creatinine': 'Assess renal filtration',
+  'Electrolytes': 'Screen electrolyte balance',
+  'Blood Glucose': 'Evaluate glycemic status',
+  'HbA1c': 'Assess long-term glycemia',
+  'CRP': 'Quantify acute inflammation',
+  'ESR': 'Screen systemic inflammation',
+  'Urine': 'Rule out urinary infection',
+  'LFT': 'Assess hepatic transaminases',
+  'Liver': 'Assess hepatic transaminases',
+  'Ultrasound': 'Evaluate anatomical pathology',
+  'Lipid': 'Assess cardiovascular risk',
+  'D-Dimer': 'Rule out thromboembolism',
+  'ABG': 'Assess acid-base oxygenation',
+  'Throat': 'Confirm bacterial etiology',
+  'Sputum': 'Identify bacterial pathogen',
+  'Basic Metabolic': 'Assess renal & electrolytes'
+};
+
+export const getLabShortRationale = (labName: string): string => {
+  const l = labName.toLowerCase();
+  for (const [k, v] of Object.entries(LAB_RATIONALE_MAP)) {
+    if (l.includes(k.toLowerCase())) return v;
+  }
+  return 'Evaluate clinical baseline';
+};
+
 export const DiagnosticEngine: React.FC = () => {
-  const { patient, addPrescriptionItem, setAdvice, addDiagnosis, addLab } = useAppStore();
+  const { patient, addPrescriptionItem, setAdvice, addDiagnosis, addLab, inventory } = useAppStore();
 
   // Navigation & View State
   const [activeTab, setActiveTab] = useState<TabType>('symptoms');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Multi-symptom & disease selection state
+  const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
+  const [selectedDiseases, setSelectedDiseases] = useState<string[]>([]);
+
+  const toggleSymptomSelect = (symptom: string) => {
+    setSelectedSymptoms(prev => 
+      prev.includes(symptom) ? prev.filter(s => s !== symptom) : [...prev, symptom]
+    );
+  };
+
+  const toggleDiseaseSelect = (disease: string) => {
+    setSelectedDiseases(prev => 
+      prev.includes(disease) ? prev.filter(d => d !== disease) : [...prev, disease]
+    );
+  };
+
+  const checkInventoryStock = (genericName: string, brandName?: string) => {
+    const g = (genericName || '').toLowerCase().trim();
+    const b = (brandName || '').toLowerCase().trim();
+    const found = inventory.find(i => {
+      const n = i.name.toLowerCase();
+      return (b && n.includes(b)) || (g && n.includes(g));
+    });
+    if (found && found.stock > 0) {
+      return { inStock: true, stock: found.stock, price: found.sellingPrice || found.unitPrice || 0, item: found };
+    }
+    return { inStock: false, stock: 0, price: 0, item: null };
+  };
   
   // Collapse States
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
@@ -147,6 +227,87 @@ export const DiagnosticEngine: React.FC = () => {
     clinicalNotes: string;
   } | null>(null);
   const [transferToast, setTransferToast] = useState<string | null>(null);
+
+  // Synthesize combined pathway from selected symptoms & diseases
+  const handleSynthesizePathway = () => {
+    if (selectedSymptoms.length === 0 && selectedDiseases.length === 0) return;
+    const promptParts = [];
+    if (selectedSymptoms.length > 0) {
+      promptParts.push(`Presenting Complaints: ${selectedSymptoms.join(', ')}`);
+    }
+    if (selectedDiseases.length > 0) {
+      promptParts.push(`Suspected Conditions: ${selectedDiseases.join(', ')}`);
+    }
+    const combinedPrompt = promptParts.join(' | ');
+    setAiPrompt(combinedPrompt);
+    setActiveTab('ai');
+    
+    // Auto run AI reasoning
+    setAiAnalyzing(true);
+    setTimeout(() => {
+      const isCardio = combinedPrompt.toLowerCase().includes('chest') || combinedPrompt.toLowerCase().includes('palpitat') || combinedPrompt.toLowerCase().includes('heart');
+      const isResp = combinedPrompt.toLowerCase().includes('cough') || combinedPrompt.toLowerCase().includes('breath') || combinedPrompt.toLowerCase().includes('stridor');
+      const isGI = combinedPrompt.toLowerCase().includes('abdom') || combinedPrompt.toLowerCase().includes('vomit') || combinedPrompt.toLowerCase().includes('diarrhea');
+
+      let diffs = [
+        { name: 'Acute Bronchitis & Viral Syndrome', probability: 78, rationale: 'Cluster match across presenting respiratory & constitutional symptoms' },
+        { name: 'Atypical Community-Acquired Pneumonia', probability: 64, rationale: 'Fever with pulmonary complaint' },
+        { name: 'Post-Viral Reactive Airway Disease', probability: 42, rationale: 'Secondary bronchial hyperresponsiveness' },
+      ];
+      let questions = [
+        'Have symptoms lasted greater than 5 days or worsened progressively?',
+        'Any pleuritic chest discomfort or hemoptysis noted?',
+        'Any known drug allergies or chronic steroid use?'
+      ];
+      let redFlags = ['SpO2 < 92% on room air', 'Tachypnea > 28 bpm', 'Cyanosis or altered mental status'];
+      let labs = ['CBC with Differential', 'Chest X-Ray (PA View)', 'C-Reactive Protein (CRP)'];
+      let meds = [
+        { generic: 'Cefixime', brand: 'Cefspan', dose: '400mg', freq: 'OD', dur: '5 Days' },
+        { generic: 'Paracetamol', brand: 'Panadol', dose: '500mg', freq: 'TDS', dur: '3 Days' },
+        { generic: 'Montelukast', brand: 'Myteka', dose: '10mg', freq: 'HS', dur: '7 Days' }
+      ];
+
+      if (isCardio) {
+        diffs = [
+          { name: 'Acute Coronary Syndrome (NSTEMI/STEMI)', probability: 85, rationale: 'Severe anginal syndrome with classic radiation' },
+          { name: 'Aortic Dissection', probability: 35, rationale: 'Tearing retrosternal pain radiating to back' },
+          { name: 'Acute Pericarditis', probability: 28, rationale: 'Pleuritic chest pain improved on leaning forward' },
+        ];
+        questions = ['Is pain retrosternal and crushing in quality?', 'Any radiation to left jaw, arm, or shoulder?', 'Are diaphoresis, dyspnea, or nausea present?'];
+        redFlags = ['Hemodynamic instability (BP < 90/60)', 'New ST elevations or bundle branch block', 'Syncope or diaphoresis'];
+        labs = ['ECG 12-Lead STAT', 'Troponin-I Quantitative', 'Serum Electrolytes & Creatinine'];
+        meds = [
+          { generic: 'Aspirin', brand: 'Disprin Chewable', dose: '300mg', freq: 'STAT', dur: 'Single dose' },
+          { generic: 'Clopidogrel', brand: 'Plavix', dose: '300mg', freq: 'STAT', dur: 'Single dose' },
+          { generic: 'Rosuvastatin', brand: 'X-Plat', dose: '20mg', freq: 'OD', dur: '30 Days' }
+        ];
+      } else if (isGI) {
+        diffs = [
+          { name: 'Acute Appendicitis', probability: 82, rationale: 'RLQ tenderness with local peritoneal signs' },
+          { name: 'Acute Mesenteric Adenitis', probability: 45, rationale: 'Associated with recent viral illness' },
+          { name: 'Gastroenteritis with Dehydration', probability: 38, rationale: 'Crampy pain with emesis' },
+        ];
+        questions = ['Did pain migrate from umbilicus to right lower quadrant?', 'Any rebound tenderness or involuntary guarding?', 'Associated high fever or severe anorexia?'];
+        redFlags = ['Peritoneal rigidity', 'Persistent bilious vomiting', 'Hypotension / septic shock'];
+        labs = ['Ultrasound Abdomen / Pelvis', 'CBC with Differential', 'Serum Electrolytes & Creatinine'];
+        meds = [
+          { generic: 'Ciprofloxacin', brand: 'Ciproxin', dose: '500mg', freq: 'BD', dur: '5 Days' },
+          { generic: 'Metronidazole', brand: 'Flagyl', dose: '400mg', freq: 'TDS', dur: '5 Days' },
+          { generic: 'Omeprazole', brand: 'Risek', dose: '40mg', freq: 'OD', dur: '14 Days' }
+        ];
+      }
+
+      setAiResult({
+        differentials: diffs,
+        stepwiseQuestions: questions,
+        redFlags: redFlags,
+        recommendedLabs: labs,
+        suggestedTreatment: meds,
+        clinicalNotes: `Comprehensive synthesized pathway for: ${combinedPrompt}.\nExamine vitals, check ECG/labs, and prioritize in-stock hospital pharmacy medications.`
+      });
+      setAiAnalyzing(false);
+    }, 600);
+  };
 
   // Group all 1600+ symptoms
   const symptomsByCategory = useMemo(() => {
@@ -485,25 +646,109 @@ export const DiagnosticEngine: React.FC = () => {
   );
 
   const renderSearchBar = () => (
-    <div className="p-3 border-b border-border bg-surface shrink-0 flex items-center justify-between gap-3">
-      <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={15} />
-        <input
-          type="text"
-          placeholder={`Search ${activeTab === 'symptoms' ? '1,600+ symptoms' : '1,600+ diseases'} across all clinical systems...`}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-9 pr-4 py-1.5 bg-canvas border border-border rounded-lg text-xs focus:outline-none focus:border-primary text-text-primary placeholder:text-text-faint"
-        />
+    <div className="p-3 border-b border-border bg-surface shrink-0 space-y-3">
+      {/* Most Common Symptoms Quick Access Strip */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-[11px] font-bold text-text-muted uppercase tracking-wider">
+          <span className="flex items-center gap-1 text-primary">
+            <Zap size={13} /> Most Common Symptoms
+          </span>
+          <span className="text-[10px] text-text-faint">Click to select or launch pathway</span>
+        </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
+          {COMMON_SYMPTOMS.map((cs) => {
+            const isSelected = selectedSymptoms.includes(cs);
+            const hasTree = !!getTreeKeyForSymptom(cs);
+            return (
+              <div
+                key={cs}
+                className={`inline-flex items-center rounded-lg border text-xs font-semibold whitespace-nowrap transition-all ${
+                  isSelected
+                    ? 'bg-primary text-white border-primary shadow-xs'
+                    : 'bg-canvas hover:bg-surface border-border text-text-secondary hover:text-primary'
+                }`}
+              >
+                <button
+                  onClick={() => toggleSymptomSelect(cs)}
+                  className="px-2 py-1 flex items-center gap-1 hover:bg-black/10 rounded-l-lg border-r border-border/50 text-[11px]"
+                  title={isSelected ? 'Deselect symptom' : 'Select symptom for combined pathway'}
+                >
+                  {isSelected ? <Check size={12} className="stroke-[3]" /> : <Plus size={12} />}
+                </button>
+                <button
+                  onClick={() => handleStartTree(cs)}
+                  className="px-2.5 py-1 flex items-center gap-1"
+                  title={hasTree ? 'Launch Decision Tree' : 'View Protocol'}
+                >
+                  <span>{cs}</span>
+                  {hasTree && <ArrowRight size={10} className={isSelected ? 'text-white' : 'text-primary'} />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
-      {searchQuery && (
-        <button
-          onClick={() => setSearchQuery('')}
-          className="text-xs text-text-muted hover:text-text-primary px-2 py-1 rounded bg-canvas border border-border"
-        >
-          Clear
-        </button>
+
+      {/* Multi-Selection Synthesis Tray Banner */}
+      {(selectedSymptoms.length > 0 || selectedDiseases.length > 0) && (
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-in fade-in duration-150">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-bold text-primary flex items-center gap-1">
+              <Sparkles size={14} /> Selected ({selectedSymptoms.length + selectedDiseases.length}):
+            </span>
+            {selectedSymptoms.map(s => (
+              <span key={s} className="px-2 py-0.5 rounded-full bg-primary/10 border border-primary/30 text-primary text-[11px] font-semibold flex items-center gap-1">
+                {s}
+                <button onClick={() => toggleSymptomSelect(s)} className="hover:text-danger">✕</button>
+              </span>
+            ))}
+            {selectedDiseases.map(d => (
+              <span key={d} className="px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-700 text-[11px] font-semibold flex items-center gap-1">
+                {d}
+                <button onClick={() => toggleDiseaseSelect(d)} className="hover:text-danger">✕</button>
+              </span>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleSynthesizePathway}
+              className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md shadow-primary/20 transition-all cursor-pointer"
+            >
+              <Zap size={14} />
+              <span>Synthesize Combined Pathway</span>
+            </button>
+            <button
+              onClick={() => { setSelectedSymptoms([]); setSelectedDiseases([]); }}
+              className="px-2.5 py-1.5 text-xs text-text-muted hover:text-text-primary hover:bg-canvas rounded-lg border border-border transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
       )}
+
+      {/* Main Search Input */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={15} />
+          <input
+            type="text"
+            placeholder={`Search ${activeTab === 'symptoms' ? 'symptoms' : 'diseases'} across all clinical systems...`}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-1.5 bg-canvas border border-border rounded-lg text-xs focus:outline-none focus:border-primary text-text-primary placeholder:text-text-faint"
+          />
+        </div>
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="text-xs text-text-muted hover:text-text-primary px-2 py-1 rounded bg-canvas border border-border"
+          >
+            Clear
+          </button>
+        )}
+      </div>
     </div>
   );
 
@@ -534,20 +779,35 @@ export const DiagnosticEngine: React.FC = () => {
               <div className="p-3 flex flex-wrap gap-1.5 border-t border-border bg-surface max-h-72 overflow-y-auto">
                 {list.map(symptom => {
                   const hasTree = !!getTreeKeyForSymptom(symptom);
+                  const isSelected = selectedSymptoms.includes(symptom);
+
                   return (
-                    <button
+                    <div
                       key={symptom}
-                      onClick={() => handleStartTree(symptom)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all flex items-center gap-1.5 ${
-                        hasTree
-                          ? 'bg-teal-500/10 hover:bg-teal-500 text-teal-600 hover:text-white border-teal-500/30 font-semibold'
-                          : 'bg-canvas hover:bg-surface border-border text-text-secondary hover:text-text-primary hover:border-primary/40'
+                      className={`inline-flex items-center rounded-md text-xs font-medium border transition-all ${
+                        isSelected
+                          ? 'bg-primary text-white border-primary shadow-xs'
+                          : hasTree
+                          ? 'bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 border-teal-500/30'
+                          : 'bg-canvas hover:bg-surface border-border text-text-secondary hover:text-text-primary'
                       }`}
-                      title={hasTree ? 'Launch Interactive Decision Tree' : 'View Clinical Protocol & Regimen'}
                     >
-                      <span>{symptom}</span>
-                      {hasTree && <ArrowRight size={11} className="text-teal-500" />}
-                    </button>
+                      <button
+                        onClick={() => toggleSymptomSelect(symptom)}
+                        className="px-2 py-1 flex items-center hover:bg-black/10 rounded-l-md border-r border-border/40 text-[10px]"
+                        title={isSelected ? 'Remove from selection' : 'Select for combined pathway'}
+                      >
+                        {isSelected ? <Check size={11} className="stroke-[3]" /> : <Plus size={11} />}
+                      </button>
+                      <button
+                        onClick={() => handleStartTree(symptom)}
+                        className="px-2 py-1 flex items-center gap-1.5"
+                        title={hasTree ? 'Launch Interactive Decision Tree' : 'View Clinical Protocol & Regimen'}
+                      >
+                        <span>{symptom}</span>
+                        {hasTree && <ArrowRight size={10} className={isSelected ? 'text-white' : 'text-teal-600'} />}
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -558,7 +818,7 @@ export const DiagnosticEngine: React.FC = () => {
 
       {Object.keys(filteredSymptoms).length === 0 && (
         <div className="py-12 text-center text-text-muted text-xs">
-          No symptoms matching "{searchQuery}" found in the 1,600+ database.
+          No symptoms matching "{searchQuery}" found.
         </div>
       )}
     </div>
@@ -591,10 +851,16 @@ export const DiagnosticEngine: React.FC = () => {
               <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2 border-t border-border bg-surface max-h-80 overflow-y-auto">
                 {list.map((disease, idx) => {
                   const icd = getIcdCode(disease, idx);
+                  const isSelected = selectedDiseases.includes(disease);
+
                   return (
                     <div
                       key={disease}
-                      className="p-2.5 rounded-lg bg-canvas border border-border flex items-center justify-between gap-2 hover:border-primary/40 transition-colors"
+                      className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 transition-colors ${
+                        isSelected
+                          ? 'bg-blue-500/10 border-blue-500/40 shadow-xs'
+                          : 'bg-canvas border border-border hover:border-primary/40'
+                      }`}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold text-xs text-text-primary truncate">{disease}</div>
@@ -607,6 +873,17 @@ export const DiagnosticEngine: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => toggleDiseaseSelect(disease)}
+                          className={`px-2 py-1 rounded text-[10px] font-bold transition-colors ${
+                            isSelected
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-surface hover:bg-canvas text-text-secondary border border-border'
+                          }`}
+                          title={isSelected ? 'Remove from synthesis selection' : 'Select for combined synthesis'}
+                        >
+                          {isSelected ? '✓ Selected' : '+ Select'}
+                        </button>
                         <button
                           onClick={() => {
                             addDiagnosis(disease);
@@ -637,7 +914,7 @@ export const DiagnosticEngine: React.FC = () => {
 
       {Object.keys(filteredDiseases).length === 0 && (
         <div className="py-12 text-center text-text-muted text-xs">
-          No disease protocols matching "{searchQuery}" found in the 1,600+ database.
+          No disease protocols matching "{searchQuery}" found.
         </div>
       )}
     </div>
@@ -772,7 +1049,7 @@ export const DiagnosticEngine: React.FC = () => {
             </div>
           </div>
 
-          {/* Red Flags & Labs */}
+          {/* Red Flags, Labs & Recommended Treatment */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div className="p-3 rounded-lg bg-danger-bg border border-danger/20 space-y-1.5">
               <h5 className="font-bold text-danger flex items-center gap-1.5">
@@ -785,13 +1062,57 @@ export const DiagnosticEngine: React.FC = () => {
 
             <div className="p-3 rounded-lg bg-canvas border border-border space-y-1.5">
               <h5 className="font-bold text-primary flex items-center gap-1.5">
-                <FlaskConical size={14} /> Recommended Workup
+                <FlaskConical size={14} /> Recommended Workup (Direct Rationales)
               </h5>
-              <ul className="list-disc list-inside text-text-secondary space-y-0.5 text-[11px]">
-                {aiResult.recommendedLabs.map((lab, i) => <li key={i}>{lab}</li>)}
-              </ul>
+              <div className="space-y-1 text-[11px]">
+                {aiResult.recommendedLabs.map((lab, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2 p-1.5 rounded bg-surface border border-border">
+                    <span className="font-medium text-text-primary">{lab}</span>
+                    <span className="text-[10px] text-teal-700 font-semibold">{getLabShortRationale(lab)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+
+          {/* Recommended Treatments with In-Stock Inventory Priority */}
+          {aiResult.suggestedTreatment && aiResult.suggestedTreatment.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-border">
+              <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                <Pill size={14} className="text-primary" />
+                Recommended Medications (Stock Prioritized)
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {aiResult.suggestedTreatment
+                  .slice()
+                  .sort((a, b) => {
+                    const aStock = checkInventoryStock(a.generic, a.brand).inStock ? -1 : 1;
+                    const bStock = checkInventoryStock(b.generic, b.brand).inStock ? -1 : 1;
+                    return aStock - bStock;
+                  })
+                  .map((med, i) => {
+                    const stock = checkInventoryStock(med.generic, med.brand);
+                    return (
+                      <div key={i} className="p-2.5 rounded-lg bg-canvas border border-border space-y-1 text-xs">
+                        <div className="font-bold text-text-primary flex items-center justify-between">
+                          <span>{med.brand || med.generic}</span>
+                        </div>
+                        <div className="text-[11px] text-text-muted">{med.dose} • {med.freq} ({med.dur})</div>
+                        {stock.inStock ? (
+                          <div className="text-[10px] font-bold text-emerald-700 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 inline-block">
+                            ✓ In Stock (₨ {stock.price})
+                          </div>
+                        ) : (
+                          <div className="text-[10px] font-medium text-amber-700 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 inline-block">
+                            ⚠️ Out of Hospital Stock
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
 
         </div>
       )}
@@ -901,26 +1222,48 @@ export const DiagnosticEngine: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                     <div>
                       <h4 className="font-bold text-text-primary mb-2 flex items-center gap-1.5">
-                        <Pill size={14} className="text-primary" /> Recommended Medications
+                        <Pill size={14} className="text-primary" /> Recommended Medications (Stock Prioritized)
                       </h4>
                       <div className="space-y-1.5">
-                        {terminalStep.medications?.map((m, i) => (
-                          <div key={i} className="p-2 rounded bg-canvas border border-border">
-                            <div className="font-bold text-text-primary">{m.brandName || m.genericName}</div>
-                            <div className="text-[11px] text-text-muted">{m.dosage} • {m.duration}</div>
-                          </div>
-                        ))}
+                        {terminalStep.medications
+                          ?.slice()
+                          .sort((a, b) => {
+                            const aStock = checkInventoryStock(a.genericName, a.brandName).inStock ? -1 : 1;
+                            const bStock = checkInventoryStock(b.genericName, b.brandName).inStock ? -1 : 1;
+                            return aStock - bStock;
+                          })
+                          .map((m, i) => {
+                            const stock = checkInventoryStock(m.genericName, m.brandName);
+                            return (
+                              <div key={i} className="p-2 rounded bg-canvas border border-border flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="font-bold text-text-primary">{m.brandName || m.genericName}</div>
+                                  <div className="text-[11px] text-text-muted">{m.dosage} • {m.duration}</div>
+                                </div>
+                                {stock.inStock ? (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 whitespace-nowrap">
+                                    ✓ In Stock (₨ {stock.price})
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20 whitespace-nowrap">
+                                    ⚠️ Out of Stock
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
                       </div>
                     </div>
 
                     <div>
                       <h4 className="font-bold text-text-primary mb-2 flex items-center gap-1.5">
-                        <FlaskConical size={14} className="text-primary" /> Required Labs
+                        <FlaskConical size={14} className="text-primary" /> Required Labs (Direct Rationales)
                       </h4>
                       <div className="space-y-1.5">
                         {terminalStep.investigations?.map((lab, i) => (
-                          <div key={i} className="p-2 rounded bg-canvas border border-border font-medium text-text-secondary">
-                            {lab}
+                          <div key={i} className="p-2 rounded bg-canvas border border-border flex items-center justify-between gap-2">
+                            <span className="font-medium text-text-primary">{lab}</span>
+                            <span className="text-[10px] text-teal-700 font-semibold">{getLabShortRationale(lab)}</span>
                           </div>
                         ))}
                       </div>
@@ -1026,16 +1369,54 @@ export const DiagnosticEngine: React.FC = () => {
                 </ul>
               </div>
 
-              <div className="p-3 rounded-lg bg-canvas border border-border space-y-1">
-                <span className="font-bold text-primary uppercase text-[10px]">Recommended Diagnostics</span>
-                <div className="flex flex-wrap gap-1">
+              <div className="p-3 rounded-lg bg-canvas border border-border space-y-1.5">
+                <span className="font-bold text-primary uppercase text-[10px]">Recommended Diagnostics (Short Rationales)</span>
+                <div className="space-y-1">
                   {selectedProtocol.suggestedLabs.map((l, i) => (
-                    <span key={i} className="px-2 py-0.5 rounded bg-surface border border-border text-text-secondary text-[11px]">
-                      {l}
-                    </span>
+                    <div key={i} className="flex items-center justify-between p-1.5 rounded bg-surface border border-border text-[11px]">
+                      <span className="font-medium text-text-primary">{l}</span>
+                      <span className="text-[10px] text-teal-700 font-semibold">{getLabShortRationale(l)}</span>
+                    </div>
                   ))}
                 </div>
               </div>
+
+              {selectedProtocol.recommendedMeds && selectedProtocol.recommendedMeds.length > 0 && (
+                <div className="p-3 rounded-lg bg-canvas border border-border space-y-1.5">
+                  <span className="font-bold text-text-primary uppercase text-[10px] flex items-center gap-1">
+                    <Pill size={12} className="text-primary" /> Recommended Medications (Stock Prioritized)
+                  </span>
+                  <div className="space-y-1">
+                    {selectedProtocol.recommendedMeds
+                      .slice()
+                      .sort((a, b) => {
+                        const aStock = checkInventoryStock(a.genericName, a.brandName).inStock ? -1 : 1;
+                        const bStock = checkInventoryStock(b.genericName, b.brandName).inStock ? -1 : 1;
+                        return aStock - bStock;
+                      })
+                      .map((m, i) => {
+                        const stock = checkInventoryStock(m.genericName, m.brandName);
+                        return (
+                          <div key={i} className="p-1.5 rounded bg-surface border border-border flex items-center justify-between gap-2 text-[11px]">
+                            <div>
+                              <div className="font-bold text-text-primary">{m.brandName || m.genericName} ({m.strength})</div>
+                              <div className="text-[10px] text-text-muted">{m.dosage} • {m.frequency}</div>
+                            </div>
+                            {stock.inStock ? (
+                              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 whitespace-nowrap">
+                                ✓ In Stock (₨ {stock.price})
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-medium text-amber-700 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 whitespace-nowrap">
+                                ⚠️ Out of Stock
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 pt-3 border-t border-border">

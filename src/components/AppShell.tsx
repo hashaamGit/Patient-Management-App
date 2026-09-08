@@ -16,6 +16,7 @@ import { HomePage } from './HomePage';
 import { AdminManagement } from './AdminManagement';
 import { PharmacyDispensary } from './PharmacyDispensary';
 import { StorekeeperInventory } from './StorekeeperInventory';
+import { PatientsDirectory } from './PatientsDirectory';
 import { useAppStore } from '../store/useAppStore';
 
 export const AppShell = () => {
@@ -74,6 +75,7 @@ export const AppShell = () => {
             <Route path="/workspace" element={<ClinicalWorkspace />} />
             <Route path="/dashboard" element={<InsightsDashboard />} />
             <Route path="/vitals" element={<VitalsDashboard />} />
+            <Route path="/patients" element={<PatientsDirectory />} />
             <Route path="/admin" element={<AdminManagement />} />
             <Route path="/pharmacy" element={<PharmacyDispensary />} />
             <Route path="/inventory" element={<StorekeeperInventory />} />

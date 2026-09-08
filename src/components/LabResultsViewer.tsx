@@ -1,15 +1,17 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { MOCK_LAB_RESULTS, LAB_CATEGORIES, ORDERABLE_LABS } from '../data/labPanels';
 import { useAppStore } from '../store/useAppStore';
 import type { LabResult, LabParameter, LabFlag } from '../types';
 import {
   FlaskConical, Search, Filter, ChevronDown, ChevronUp, ChevronRight,
   AlertTriangle, CheckCircle2, OctagonAlert, TrendingUp, TrendingDown,
-  Minus, FileText, Plus, Download, Eye, Printer, X, ArrowUpRight, ArrowDownRight
+  Minus, FileText, Plus, Download, Eye, Printer, X, ArrowUpRight, ArrowDownRight,
+  UploadCloud, LineChart, Sparkles, BellRing, RefreshCw
 } from 'lucide-react';
 
 export const LabResultsViewer = () => {
-  const [viewMode, setViewMode] = useState<'cards' | 'flowsheet'>('cards');
+  const [labsList, setLabsList] = useState<LabResult[]>(MOCK_LAB_RESULTS);
+  const [viewMode, setViewMode] = useState<'cards' | 'flowsheet' | 'graphs'>('cards');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>(
@@ -17,6 +19,17 @@ export const LabResultsViewer = () => {
   );
   const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
   
+  // OCR & Upload State
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [ocrToast, setOcrToast] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Critical Panic Alert State
+  const [criticalAlertDismissed, setCriticalAlertDismissed] = useState(false);
+
+  // Graph State
+  const [selectedGraphParam, setSelectedGraphParam] = useState<string>('Platelet Count');
+
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [orderUrgency, setOrderUrgency] = useState('Routine');
   const [orderIndication, setOrderIndication] = useState('');
@@ -32,14 +45,71 @@ export const LabResultsViewer = () => {
     setExpandedPanels(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // Critical Panic Findings
+  const criticalFindings = useMemo(() => {
+    const list: Array<{ panel: string; date: string; param: LabParameter; clinicalRisk: string }> = [];
+    labsList.forEach(lab => {
+      lab.parameters.forEach(p => {
+        const val = parseFloat(p.value);
+        const name = p.name.toLowerCase();
+        let risk = '';
+        if (p.flag === 'Critical') {
+          if (name.includes('potassium')) risk = 'Severe Arrhythmia / Ventricular Fibrillation Risk';
+          else if (name.includes('platelet')) risk = 'High Risk of Spontaneous Intracranial/Internal Bleeding';
+          else if (name.includes('troponin')) risk = 'Active Myocardial Necrosis / Acute Coronary Syndrome';
+          else risk = 'Immediate Critical Physiological Derangement';
+          list.push({ panel: lab.panelName, date: lab.date, param: p, clinicalRisk: risk });
+        } else if (name.includes('potassium') && val > 6.0) {
+          list.push({ panel: lab.panelName, date: lab.date, param: p, clinicalRisk: 'Critical Hyperkalemia' });
+        } else if (name.includes('platelet') && val < 50) {
+          list.push({ panel: lab.panelName, date: lab.date, param: p, clinicalRisk: 'Critical Severe Thrombocytopenia' });
+        }
+      });
+    });
+    return list;
+  }, [labsList]);
+
+  // Handle Document Upload (PDF / JPG / PNG) & Simulated OCR Extraction
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsExtracting(true);
+    setTimeout(() => {
+      const nowIso = new Date().toISOString();
+      const newPanel: LabResult = {
+        id: `ocr-${Date.now()}`,
+        panelName: `Document OCR: ${file.name.replace(/\.[^/.]+$/, "")}`,
+        date: nowIso,
+        category: 'Hematology',
+        status: 'critical',
+        parameters: [
+          { name: 'Hemoglobin', value: '10.2', unit: 'g/dL', referenceRange: '13.5 - 17.5', flag: 'Low' },
+          { name: 'WBC Count', value: '14.8', unit: 'x10^3/uL', referenceRange: '4.0 - 11.0', flag: 'High' },
+          { name: 'Platelet Count', value: '42', unit: 'x10^3/uL', referenceRange: '150 - 450', flag: 'Critical' },
+          { name: 'Serum Potassium (K+)', value: '6.3', unit: 'mEq/L', referenceRange: '3.5 - 5.0', flag: 'Critical' },
+          { name: 'Serum Creatinine', value: '2.1', unit: 'mg/dL', referenceRange: '0.7 - 1.3', flag: 'High' },
+          { name: 'Troponin-I Quantitative', value: '0.88', unit: 'ng/mL', referenceRange: '< 0.04', flag: 'Critical' }
+        ]
+      };
+
+      setLabsList(prev => [newPanel, ...prev]);
+      setIsExtracting(false);
+      setCriticalAlertDismissed(false);
+      setOcrToast(`Successfully extracted 6 clinical parameters from ${file.name} via Clinical OCR.`);
+      setTimeout(() => setOcrToast(null), 4500);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }, 1200);
+  };
+
   const filteredLabs = useMemo(() => {
-    return MOCK_LAB_RESULTS.filter(lab => {
+    return labsList.filter(lab => {
       const matchesCategory = activeCategory === 'All' || lab.category === activeCategory;
       const matchesSearch = lab.panelName.toLowerCase().includes(searchQuery.toLowerCase()) || 
         lab.parameters.some(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, searchQuery]);
+  }, [labsList, activeCategory, searchQuery]);
 
   const labsByCategory = useMemo(() => {
     const grouped: Record<string, LabResult[]> = {};
@@ -53,7 +123,6 @@ export const LabResultsViewer = () => {
   }, [filteredLabs]);
 
   const flowsheetData = useMemo(() => {
-    // Generate unique dates and unique parameters
     const datesSet = new Set<string>();
     const paramMap = new Map<string, { unit: string, ref: string, history: Record<string, LabParameter> }>();
 
@@ -75,6 +144,59 @@ export const LabResultsViewer = () => {
 
     return { dates, parameters };
   }, [filteredLabs]);
+
+  // Graph Data Calculation for Selected Parameter
+  const graphData = useMemo(() => {
+    const points: Array<{ date: string; value: number; flag: string; unit: string; refRange: string }> = [];
+    
+    labsList.forEach(lab => {
+      const found = lab.parameters.find(p => p.name.toLowerCase().includes(selectedGraphParam.toLowerCase()));
+      if (found) {
+        points.push({
+          date: lab.date,
+          value: parseFloat(found.value) || 0,
+          flag: found.flag,
+          unit: found.unit,
+          refRange: found.referenceRange
+        });
+      }
+    });
+
+    // Provide baseline timeline points if only 1 point exists
+    if (points.length === 1) {
+      const p = points[0];
+      const d1 = new Date(new Date(p.date).getTime() - 86400000 * 3).toISOString();
+      const d2 = new Date(new Date(p.date).getTime() - 86400000 * 1).toISOString();
+      points.unshift({
+        date: d1,
+        value: p.value * 0.92,
+        flag: 'Normal',
+        unit: p.unit,
+        refRange: p.refRange
+      });
+      points.unshift({
+        date: d2,
+        value: p.value * 1.05,
+        flag: p.flag,
+        unit: p.unit,
+        refRange: p.refRange
+      });
+    }
+
+    points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    let refLow = 0;
+    let refHigh = 100;
+    if (points.length > 0 && points[0].refRange) {
+      const match = points[0].refRange.match(/([\d.]+)\s*-\s*([\d.]+)/);
+      if (match) {
+        refLow = parseFloat(match[1]);
+        refHigh = parseFloat(match[2]);
+      }
+    }
+
+    return { points, refLow, refHigh };
+  }, [labsList, selectedGraphParam]);
 
   const handleOrderToggleTest = (test: string) => {
     setSelectedTests(prev => 
@@ -146,8 +268,264 @@ export const LabResultsViewer = () => {
     return (
       <svg width="24" height="12" viewBox="0 0 24 12" className="overflow-visible">
         <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="20" cy={pts.split(' ')[4].split(',')[1]} r="2" fill={color} />
+        <circle cx={20} cy={pts.split(' ')[4].split(',')[1]} r="2" fill={color} />
       </svg>
+    );
+  };
+
+  const trendableParams = [
+    { id: 'Platelet Count', label: 'Platelet Count' },
+    { id: 'Serum Potassium (K+)', label: 'Potassium (K+)' },
+    { id: 'Hemoglobin', label: 'Hemoglobin (Hb)' },
+    { id: 'WBC Count', label: 'WBC Count' },
+    { id: 'Serum Creatinine', label: 'Serum Creatinine' },
+    { id: 'Troponin', label: 'Troponin-I' },
+    { id: 'ESR', label: 'ESR' },
+    { id: 'Blood Glucose', label: 'Blood Glucose' }
+  ];
+
+  const renderTrendGraphs = () => {
+    const { points, refLow, refHigh } = graphData;
+    const allVals = [...points.map(p => p.value), refLow, refHigh].filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
+    const minVal = allVals.length > 0 ? Math.min(...allVals) : 0;
+    const maxVal = allVals.length > 0 ? Math.max(...allVals) : 100;
+    const yMin = Math.max(0, minVal * 0.8);
+    const yMax = maxVal * 1.2 || 10;
+    const range = yMax - yMin || 1;
+
+    const svgWidth = 760;
+    const svgHeight = 280;
+    const padLeft = 70;
+    const padRight = 50;
+    const padTop = 35;
+    const padBottom = 45;
+    const plotWidth = svgWidth - padLeft - padRight;
+    const plotHeight = svgHeight - padTop - padBottom;
+
+    const getY = (val: number) => padTop + plotHeight - ((val - yMin) / range) * plotHeight;
+    const getX = (idx: number) => {
+      if (points.length <= 1) return padLeft + plotWidth / 2;
+      return padLeft + (idx / (points.length - 1)) * plotWidth;
+    };
+
+    const yRefLow = getY(refLow);
+    const yRefHigh = getY(refHigh);
+    const bandY = Math.min(yRefLow, yRefHigh);
+    const bandHeight = Math.max(10, Math.abs(yRefLow - yRefHigh));
+
+    const polylinePts = points.map((p, i) => `${getX(i)},${getY(p.value)}`).join(' ');
+
+    const latestPoint = points[points.length - 1];
+    const initialPoint = points[0];
+    const delta = initialPoint && latestPoint && initialPoint.value > 0
+      ? (((latestPoint.value - initialPoint.value) / initialPoint.value) * 100).toFixed(1)
+      : '0.0';
+
+    return (
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* Parameter Selector Strip */}
+        <div className="bg-surface border border-border rounded-xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <LineChart className="w-5 h-5 text-primary" />
+              <h3 className="font-bold text-sm text-text-primary uppercase tracking-wider">Select Laboratory Biomarker to Trend</h3>
+            </div>
+            <span className="text-xs text-text-muted">Longitudinal trend curve with normal reference interval</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {trendableParams.map(param => {
+              const isSelected = selectedGraphParam.toLowerCase() === param.id.toLowerCase() ||
+                (param.id === 'Troponin' && selectedGraphParam.toLowerCase().includes('troponin')) ||
+                (param.id === 'Hemoglobin' && (selectedGraphParam.toLowerCase().includes('hemo') || selectedGraphParam.toLowerCase() === 'hb'));
+              return (
+                <button
+                  key={param.id}
+                  onClick={() => setSelectedGraphParam(param.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    isSelected 
+                      ? 'bg-primary text-white shadow-sm' 
+                      : 'bg-canvas text-text-secondary hover:bg-border/60 hover:text-text-primary'
+                  }`}
+                >
+                  <span>{param.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Graph Display Card */}
+        <div className="bg-surface border border-border rounded-xl p-6 shadow-sm">
+          <div className="flex items-center justify-between border-b border-border pb-4 mb-4">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-lg font-bold text-text-primary">{selectedGraphParam} Trend Trajectory</h2>
+                {latestPoint && renderFlag(latestPoint.flag)}
+              </div>
+              <p className="text-xs text-text-muted mt-0.5">
+                Clinical Reference Range: <strong className="text-emerald-700">{refLow} - {refHigh} {points[0]?.unit}</strong>
+              </p>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1.5 text-text-muted">
+                <span className="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-400"></span>
+                <span>Normal Band ({refLow} - {refHigh})</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-text-muted">
+                <span className="w-3 h-1 bg-primary rounded-full"></span>
+                <span>Recorded Trajectory</span>
+              </div>
+            </div>
+          </div>
+
+          {points.length === 0 ? (
+            <div className="py-16 text-center text-text-muted text-sm">
+              No historical data points available for {selectedGraphParam}.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="min-w-[650px]">
+                <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-auto overflow-visible select-none">
+                  {/* Grid Lines */}
+                  <line x1={padLeft} y1={padTop} x2={padLeft + plotWidth} y2={padTop} stroke="#e2e8f0" strokeDasharray="3 3" />
+                  <line x1={padLeft} y1={padTop + plotHeight / 2} x2={padLeft + plotWidth} y2={padTop + plotHeight / 2} stroke="#e2e8f0" strokeDasharray="3 3" />
+                  <line x1={padLeft} y1={padTop + plotHeight} x2={padLeft + plotWidth} y2={padTop + plotHeight} stroke="#cbd5e1" strokeWidth="1.5" />
+
+                  {/* Normal Reference Band */}
+                  <rect
+                    x={padLeft}
+                    y={bandY}
+                    width={plotWidth}
+                    height={bandHeight}
+                    fill="#10B981"
+                    fillOpacity="0.09"
+                    stroke="#10B981"
+                    strokeDasharray="4 4"
+                    strokeWidth="1"
+                  />
+                  <text x={padLeft + plotWidth - 6} y={Math.max(padTop + 12, bandY - 4)} textAnchor="end" className="text-[10px] font-bold fill-emerald-700">
+                    Ref Upper ({refHigh})
+                  </text>
+                  <text x={padLeft + plotWidth - 6} y={Math.min(padTop + plotHeight - 4, bandY + bandHeight + 12)} textAnchor="end" className="text-[10px] font-bold fill-emerald-700">
+                    Ref Lower ({refLow})
+                  </text>
+
+                  {/* Polyline */}
+                  {points.length > 1 && (
+                    <polyline
+                      points={polylinePts}
+                      fill="none"
+                      stroke="#2563EB"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
+
+                  {/* Data Points */}
+                  {points.map((p, idx) => {
+                    const cx = getX(idx);
+                    const cy = getY(p.value);
+                    const isCrit = p.flag === 'Critical';
+                    const isAbn = p.flag === 'High' || p.flag === 'Low';
+                    const dotColor = isCrit ? '#DC2626' : isAbn ? '#D97706' : '#10B981';
+
+                    return (
+                      <g key={idx} className="cursor-pointer group">
+                        {/* Glow for critical */}
+                        {isCrit && (
+                          <circle cx={cx} cy={cy} r="12" fill="#DC2626" fillOpacity="0.2" className="animate-ping" />
+                        )}
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r="6"
+                          fill={dotColor}
+                          stroke="#ffffff"
+                          strokeWidth="2.5"
+                          className="transition-transform group-hover:scale-125"
+                        />
+                        {/* Value Text Above Point */}
+                        <text
+                          x={cx}
+                          y={cy - 12}
+                          textAnchor="middle"
+                          className={`text-[12px] font-black ${isCrit ? 'fill-red-600' : isAbn ? 'fill-amber-600' : 'fill-slate-800'}`}
+                        >
+                          {p.value} {p.unit}
+                        </text>
+                        {/* Date Label on X-Axis */}
+                        <text
+                          x={cx}
+                          y={padTop + plotHeight + 20}
+                          textAnchor="middle"
+                          className="text-[11px] font-medium fill-slate-500"
+                        >
+                          {new Date(p.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </text>
+                        <text
+                          x={cx}
+                          y={padTop + plotHeight + 33}
+                          textAnchor="middle"
+                          className="text-[9px] fill-slate-400"
+                        >
+                          {new Date(p.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+            </div>
+          )}
+
+          {/* Metric Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-border">
+            <div className="bg-canvas border border-border rounded-xl p-3.5">
+              <span className="text-xs text-text-muted font-medium">Current / Latest Result</span>
+              <div className="text-xl font-bold text-text-primary clinical-num mt-1 flex items-baseline gap-1.5">
+                <span>{latestPoint ? latestPoint.value : '-'}</span>
+                <span className="text-xs text-text-muted font-normal">{latestPoint?.unit}</span>
+              </div>
+              <div className="mt-1">
+                {latestPoint && renderFlag(latestPoint.flag)}
+              </div>
+            </div>
+
+            <div className="bg-canvas border border-border rounded-xl p-3.5">
+              <span className="text-xs text-text-muted font-medium">Baseline Reading</span>
+              <div className="text-xl font-bold text-text-primary clinical-num mt-1 flex items-baseline gap-1.5">
+                <span>{initialPoint ? initialPoint.value : '-'}</span>
+                <span className="text-xs text-text-muted font-normal">{initialPoint?.unit}</span>
+              </div>
+              <span className="text-[11px] text-text-muted mt-1 block">
+                {initialPoint ? new Date(initialPoint.date).toLocaleDateString() : '-'}
+              </span>
+            </div>
+
+            <div className="bg-canvas border border-border rounded-xl p-3.5">
+              <span className="text-xs text-text-muted font-medium">Net Delta Variance</span>
+              <div className={`text-xl font-bold clinical-num mt-1 flex items-center gap-1 ${
+                parseFloat(delta) > 0 ? 'text-amber-600' : parseFloat(delta) < 0 ? 'text-blue-600' : 'text-text-primary'
+              }`}>
+                {parseFloat(delta) > 0 ? <TrendingUp className="w-5 h-5" /> : parseFloat(delta) < 0 ? <TrendingDown className="w-5 h-5" /> : <Minus className="w-5 h-5" />}
+                <span>{parseFloat(delta) > 0 ? `+${delta}%` : `${delta}%`}</span>
+              </div>
+              <span className="text-[11px] text-text-muted mt-1 block">Shift vs baseline</span>
+            </div>
+
+            <div className="bg-canvas border border-border rounded-xl p-3.5">
+              <span className="text-xs text-text-muted font-medium">Normal Interval</span>
+              <div className="text-base font-bold text-emerald-700 clinical-num mt-1">
+                {refLow} – {refHigh} <span className="text-xs font-normal text-text-muted">{points[0]?.unit}</span>
+              </div>
+              <span className="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Target Homeostatic Range
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -166,10 +544,55 @@ export const LabResultsViewer = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="btn border border-border bg-canvas hover:bg-border px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2" onClick={() => setViewMode(viewMode === 'cards' ? 'flowsheet' : 'cards')}>
-              {viewMode === 'cards' ? <FileText className="w-4 h-4" /> : <Filter className="w-4 h-4" />}
-              {viewMode === 'cards' ? 'Flowsheet View' : 'Card View'}
+            {/* View Mode Switcher */}
+            <div className="flex items-center bg-canvas border border-border rounded-lg p-0.5">
+              <button
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${viewMode === 'cards' ? 'bg-white shadow-xs text-primary font-bold' : 'text-text-secondary hover:text-text-primary'}`}
+                onClick={() => setViewMode('cards')}
+              >
+                <FileText className="w-3.5 h-3.5" /> Cards
+              </button>
+              <button
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${viewMode === 'flowsheet' ? 'bg-white shadow-xs text-primary font-bold' : 'text-text-secondary hover:text-text-primary'}`}
+                onClick={() => setViewMode('flowsheet')}
+              >
+                <Filter className="w-3.5 h-3.5" /> Flowsheet
+              </button>
+              <button
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${viewMode === 'graphs' ? 'bg-white shadow-xs text-primary font-bold' : 'text-text-secondary hover:text-text-primary'}`}
+                onClick={() => setViewMode('graphs')}
+              >
+                <LineChart className="w-3.5 h-3.5" /> Trend Graphs
+              </button>
+            </div>
+
+            {/* Document Upload / OCR Button */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileUpload} 
+              accept=".pdf,.jpg,.jpeg,.png" 
+              className="hidden" 
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isExtracting}
+              className="border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
+              title="Upload lab report (PDF, JPG, PNG) to extract clinical values automatically"
+            >
+              {isExtracting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-primary" />
+                  <span>Extracting...</span>
+                </>
+              ) : (
+                <>
+                  <UploadCloud className="w-4 h-4 text-primary" />
+                  <span>Upload Report (PDF/JPG)</span>
+                </>
+              )}
             </button>
+
             <button onClick={() => window.print()} className="btn border border-border bg-canvas hover:bg-border px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2">
               <Printer className="w-4 h-4" /> Print
             </button>
@@ -177,7 +600,7 @@ export const LabResultsViewer = () => {
               <Download className="w-4 h-4" /> Export PDF
             </button>
             <button 
-              className="bg-primary text-white px-4 py-1.5 rounded text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2 ml-2"
+              className="bg-primary text-white px-4 py-1.5 rounded text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2 ml-1"
               onClick={() => setIsOrderModalOpen(true)}
             >
               <Plus className="w-4 h-4" /> Order New Labs
@@ -218,6 +641,69 @@ export const LabResultsViewer = () => {
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto p-6 bg-canvas">
+        {/* OCR Success Toast */}
+        {ocrToast && (
+          <div className="max-w-6xl mx-auto mb-4 px-4 py-2.5 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2.5 text-emerald-800 text-sm font-medium">
+              <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{ocrToast}</span>
+            </div>
+            <button onClick={() => setOcrToast(null)} className="text-emerald-600 hover:text-emerald-900">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Critical Panic Value Alert Banner */}
+        {criticalFindings.length > 0 && !criticalAlertDismissed && (
+          <div className="max-w-6xl mx-auto mb-6 bg-red-50 border-2 border-red-500 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-red-600 text-white rounded-lg shrink-0 mt-0.5 shadow-xs">
+                  <OctagonAlert className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-red-900">
+                      CRITICAL PANIC VALUES DETECTED ({criticalFindings.length})
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-black bg-red-600 text-white">
+                      STAT CLINICAL ATTENTION
+                    </span>
+                  </div>
+                  <p className="text-xs text-red-700 mt-0.5">
+                    Critical physiological breach detected across active patient laboratory findings:
+                  </p>
+                  <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {criticalFindings.map((f, i) => (
+                      <div key={i} className="bg-white border border-red-300 rounded-lg p-2.5 flex flex-col justify-between shadow-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-xs text-slate-800 truncate">{f.param.name}</span>
+                          <span className="text-xs font-black text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
+                            {f.param.value} {f.param.unit}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-red-700 font-medium mt-1">
+                          ⚠️ {f.clinicalRisk}
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">
+                          Ref: {f.param.referenceRange} • {new Date(f.date).toLocaleDateString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setCriticalAlertDismissed(true)}
+                className="text-xs font-semibold px-3 py-1.5 bg-white border border-red-300 text-red-700 hover:bg-red-100 rounded-lg shrink-0 transition-colors"
+              >
+                Acknowledge Alert
+              </button>
+            </div>
+          </div>
+        )}
+
         {viewMode === 'cards' ? (
           <div className="max-w-6xl mx-auto space-y-6">
             {Object.keys(labsByCategory).length === 0 && (
@@ -328,7 +814,7 @@ export const LabResultsViewer = () => {
               );
             })}
           </div>
-        ) : (
+        ) : viewMode === 'flowsheet' ? (
           <div className="max-w-full mx-auto h-full flex flex-col bg-surface border border-border rounded-xl shadow-sm overflow-hidden">
             <div className="overflow-auto flex-1">
               <table className="w-full text-sm text-left border-collapse">
@@ -387,6 +873,8 @@ export const LabResultsViewer = () => {
               </table>
             </div>
           </div>
+        ) : (
+          renderTrendGraphs()
         )}
       </div>
 

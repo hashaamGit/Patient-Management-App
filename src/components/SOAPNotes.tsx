@@ -1,12 +1,20 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { FileText, ChevronDown, ChevronUp, Save, RotateCcw, Clipboard, Stethoscope, Target, ClipboardList, Sparkles, CheckCircle2 } from 'lucide-react';
+import {
+  FileText, ChevronDown, ChevronUp, Save, RotateCcw, Clipboard, Stethoscope,
+  Target, ClipboardList, Sparkles, CheckCircle2, Heart, Scissors, Users,
+  Briefcase, Plus, X, Clock, Copy, Check, Activity
+} from 'lucide-react';
 
 export const SOAPNotes = () => {
-  const { soapNote, updateSOAPSection, resetSOAPNote, patient, prescription, saveCurrentCase } = useAppStore();
+  const {
+    soapNote, updateSOAPSection, resetSOAPNote, patient, prescription, saveCurrentCase,
+    patientHistory, updatePatientHistory, clinicalNotes, updateClinicalNotes
+  } = useAppStore();
   
   const [expanded, setExpanded] = useState({
     S: true,
+    history: true,
     O: true,
     A: true,
     P: true
@@ -14,6 +22,18 @@ export const SOAPNotes = () => {
 
   const [newDiag, setNewDiag] = useState('');
   const [newDiff, setNewDiff] = useState('');
+  const [copiedNotes, setCopiedNotes] = useState(false);
+
+  // History edit state
+  const [newPmH, setNewPmH] = useState('');
+  const [surgProc, setSurgProc] = useState('');
+  const [surgDate, setSurgDate] = useState('');
+  const [famRel, setFamRel] = useState('Father');
+  const [famCond, setFamCond] = useState('');
+
+  const pmhQuickAdds = ['HTN', 'DM Type 2', 'IHD', 'CKD Stage 3', 'COPD', 'Asthma', 'Hypothyroidism', 'Hyperlipidemia', 'Hepatitis B', 'Hepatitis C', 'Epilepsy'];
+  const surgQuickAdds = ['Appendectomy', 'Cholecystectomy', 'C-Section', 'Hernia Repair', 'CABG'];
+  const famRelations = ['Father', 'Mother', 'Sibling', 'Grandparent', 'Other'];
 
   const toggleSection = (section: keyof typeof expanded) => {
     setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
@@ -29,6 +49,23 @@ export const SOAPNotes = () => {
     { id: 'gastritis', label: 'Gastritis' },
     { id: 'chest_pain', label: 'Chest Pain Evaluation' }
   ];
+
+  const handleCopyNotes = () => {
+    navigator.clipboard.writeText(clinicalNotes || '');
+    setCopiedNotes(true);
+    setTimeout(() => setCopiedNotes(false), 2000);
+  };
+
+  const handleInsertTimestamp = () => {
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const updated = clinicalNotes ? `${clinicalNotes}\n[${timeStr}]: ` : `[${timeStr}]: `;
+    updateClinicalNotes(updated);
+  };
+
+  const handleInsertVitals = () => {
+    const vStr = `\n[Vitals]: BP ${patient.bp || '--'} | PR ${patient.pulse || '--'} bpm | Temp ${patient.temperature || '--'}°C | SpO2 ${patient.spo2 || '--'}% | RR ${patient.respiratoryRate || '--'}/min`;
+    updateClinicalNotes(clinicalNotes ? `${clinicalNotes}${vStr}` : vStr.trim());
+  };
 
   const handleAutoFillRx = () => {
     const meds = prescription.items.map(i => `${i.genericName} ${i.strength} ${i.form} ${i.dosage} ${i.frequency} x ${i.duration}`).join('\n');
@@ -132,6 +169,60 @@ export const SOAPNotes = () => {
           </div>
         </div>
 
+        {/* Clinical Notes & Provider Scratchpad */}
+        <div className="card p-4 bg-gradient-to-r from-slate-50 to-indigo-50/30 border border-border rounded-xl">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-primary" />
+              <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">
+                Clinical Notes & Physician Scratchpad
+              </h3>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Check className="w-2.5 h-2.5" /> Persistent Autosave
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs">
+              <button
+                onClick={handleInsertTimestamp}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-border rounded-md text-text-secondary font-medium flex items-center gap-1 transition-colors"
+                title="Insert current timestamp"
+              >
+                <Clock className="w-3 h-3 text-slate-500" />
+                <span>+ Time</span>
+              </button>
+              <button
+                onClick={handleInsertVitals}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-border rounded-md text-text-secondary font-medium flex items-center gap-1 transition-colors"
+                title="Insert active patient vitals"
+              >
+                <Activity className="w-3 h-3 text-emerald-600" />
+                <span>+ Vitals</span>
+              </button>
+              <button
+                onClick={handleCopyNotes}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-border rounded-md text-text-secondary font-medium flex items-center gap-1 transition-colors"
+                title="Copy all notes to clipboard"
+              >
+                {copiedNotes ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-500" />}
+                <span>{copiedNotes ? 'Copied' : 'Copy'}</span>
+              </button>
+              <button
+                onClick={() => updateClinicalNotes('')}
+                className="px-2 py-1 text-slate-400 hover:text-red-600 rounded transition-colors text-[11px]"
+                title="Clear scratchpad"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <textarea
+            value={clinicalNotes}
+            onChange={(e) => updateClinicalNotes(e.target.value)}
+            placeholder="Type quick clinical thoughts, provider impression notes, differential scratchpad, or tele-consult logs here..."
+            className="w-full h-24 p-2.5 text-sm bg-white border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 text-text-primary resize-y font-mono text-xs leading-relaxed"
+          />
+        </div>
+
         {/* S: Subjective */}
         <div className="card overflow-hidden border-l-4 border-l-blue-500">
           <button 
@@ -165,6 +256,254 @@ export const SOAPNotes = () => {
                   className="w-full p-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 min-h-[100px]"
                   placeholder="Narrative..."
                 />
+              </div>
+
+              {/* Embedded Patient History Section under Subjective */}
+              <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-4">
+                <div 
+                  className="flex items-center justify-between cursor-pointer select-none"
+                  onClick={() => toggleSection('history')}
+                >
+                  <div className="flex items-center gap-2">
+                    <Heart className="w-4 h-4 text-rose-500" />
+                    <h4 className="text-sm font-bold text-slate-900">
+                      Patient History (Past Medical, Surgical, Family & Social)
+                    </h4>
+                    <span className="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-medium">
+                      Integrated Flow
+                    </span>
+                  </div>
+                  {expanded.history ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                </div>
+
+                {expanded.history && (
+                  <div className="space-y-4 pt-2 border-t border-slate-200">
+                    {/* Past Medical History */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                          <Heart className="w-3.5 h-3.5 text-rose-500" /> Past Medical History
+                        </label>
+                        <span className="text-[11px] text-slate-500">Quick tap to add</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {pmhQuickAdds.map(q => {
+                          const hasIt = patientHistory.pastMedical.includes(q);
+                          return (
+                            <button
+                              key={q}
+                              type="button"
+                              onClick={() => {
+                                if (hasIt) {
+                                  updatePatientHistory({ pastMedical: patientHistory.pastMedical.filter(m => m !== q) });
+                                } else {
+                                  updatePatientHistory({ pastMedical: [...patientHistory.pastMedical, q] });
+                                }
+                              }}
+                              className={`px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
+                                hasIt ? 'bg-rose-100 text-rose-800 border border-rose-300 font-bold' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'
+                              }`}
+                            >
+                              {hasIt ? `✓ ${q}` : `+ ${q}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newPmH}
+                          onChange={e => setNewPmH(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && newPmH.trim()) {
+                              updatePatientHistory({ pastMedical: [...patientHistory.pastMedical, newPmH.trim()] });
+                              setNewPmH('');
+                            }
+                          }}
+                          placeholder="Add custom medical condition..."
+                          className="flex-1 p-2 text-xs border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newPmH.trim()) {
+                              updatePatientHistory({ pastMedical: [...patientHistory.pastMedical, newPmH.trim()] });
+                              setNewPmH('');
+                            }
+                          }}
+                          className="px-3 bg-slate-800 text-white rounded-md text-xs font-semibold hover:bg-slate-700"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Surgical & Family History Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Past Surgical History */}
+                      <div className="bg-white border border-slate-200 rounded-lg p-3">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                          <Scissors className="w-3.5 h-3.5 text-indigo-600" /> Past Surgical History
+                        </label>
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {surgQuickAdds.map(s => (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => updatePatientHistory({ pastSurgical: [...patientHistory.pastSurgical, { procedure: s, date: 'Prior' }] })}
+                              className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[11px]"
+                            >
+                              + {s}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex gap-1.5 mb-2">
+                          <input
+                            type="text"
+                            placeholder="Procedure..."
+                            value={surgProc}
+                            onChange={e => setSurgProc(e.target.value)}
+                            className="flex-1 p-1.5 text-xs border border-slate-200 rounded bg-slate-50"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Year..."
+                            value={surgDate}
+                            onChange={e => setSurgDate(e.target.value)}
+                            className="w-16 p-1.5 text-xs border border-slate-200 rounded bg-slate-50"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (surgProc) {
+                                updatePatientHistory({ pastSurgical: [...patientHistory.pastSurgical, { procedure: surgProc, date: surgDate || 'Prior' }] });
+                                setSurgProc('');
+                                setSurgDate('');
+                              }
+                            }}
+                            className="px-2 bg-indigo-600 text-white rounded text-xs font-bold"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="space-y-1 max-h-24 overflow-y-auto">
+                          {patientHistory.pastSurgical.map((s, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs bg-slate-50 px-2 py-1 rounded">
+                              <span className="font-medium text-slate-800">{s.procedure} <span className="text-slate-500 font-normal">({s.date})</span></span>
+                              <button onClick={() => updatePatientHistory({ pastSurgical: patientHistory.pastSurgical.filter((_, i) => i !== idx) })} className="text-slate-400 hover:text-red-600">×</button>
+                            </div>
+                          ))}
+                          {patientHistory.pastSurgical.length === 0 && (
+                            <span className="text-[11px] text-slate-400 italic">No past surgeries recorded.</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Family History */}
+                      <div className="bg-white border border-slate-200 rounded-lg p-3">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-teal-600" /> Family Medical History
+                        </label>
+                        <div className="flex gap-1.5 mb-2">
+                          <select
+                            value={famRel}
+                            onChange={e => setFamRel(e.target.value)}
+                            className="text-xs border border-slate-200 rounded bg-slate-50 px-2 py-1"
+                          >
+                            {famRelations.map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Condition (e.g. DM, CAD)..."
+                            value={famCond}
+                            onChange={e => setFamCond(e.target.value)}
+                            className="flex-1 p-1.5 text-xs border border-slate-200 rounded bg-slate-50"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (famCond) {
+                                updatePatientHistory({ familyHistory: [...patientHistory.familyHistory, { relation: famRel, condition: famCond }] });
+                                setFamCond('');
+                              }
+                            }}
+                            className="px-2 bg-teal-600 text-white rounded text-xs font-bold"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="space-y-1 max-h-24 overflow-y-auto">
+                          {patientHistory.familyHistory.map((f, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs bg-slate-50 px-2 py-1 rounded">
+                              <span className="font-medium text-slate-800">{f.relation}: <span className="text-teal-700 font-semibold">{f.condition}</span></span>
+                              <button onClick={() => updatePatientHistory({ familyHistory: patientHistory.familyHistory.filter((_, i) => i !== idx) })} className="text-slate-400 hover:text-red-600">×</button>
+                            </div>
+                          ))}
+                          {patientHistory.familyHistory.length === 0 && (
+                            <span className="text-[11px] text-slate-400 italic">No family history recorded.</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Social History */}
+                    <div className="bg-white border border-slate-200 rounded-lg p-3">
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <Briefcase className="w-3.5 h-3.5 text-amber-600" /> Social & Habits
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div>
+                          <label className="text-[10px] font-medium text-slate-500">Smoking</label>
+                          <select
+                            value={patientHistory.socialHistory.smoking}
+                            onChange={e => updatePatientHistory({ socialHistory: { ...patientHistory.socialHistory, smoking: e.target.value } })}
+                            className="w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50"
+                          >
+                            <option value="Non-smoker">Non-smoker</option>
+                            <option value="Current smoker">Current smoker</option>
+                            <option value="Former smoker">Former smoker</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-medium text-slate-500">Alcohol</label>
+                          <select
+                            value={patientHistory.socialHistory.alcohol}
+                            onChange={e => updatePatientHistory({ socialHistory: { ...patientHistory.socialHistory, alcohol: e.target.value } })}
+                            className="w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50"
+                          >
+                            <option value="Never">Never</option>
+                            <option value="Occasional">Occasional</option>
+                            <option value="Moderate">Moderate</option>
+                            <option value="Heavy">Heavy</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-medium text-slate-500">Occupation</label>
+                          <input
+                            type="text"
+                            value={patientHistory.socialHistory.occupation}
+                            onChange={e => updatePatientHistory({ socialHistory: { ...patientHistory.socialHistory, occupation: e.target.value } })}
+                            placeholder="e.g. Office Worker"
+                            className="w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-medium text-slate-500">Exercise</label>
+                          <select
+                            value={patientHistory.socialHistory.exercise}
+                            onChange={e => updatePatientHistory({ socialHistory: { ...patientHistory.socialHistory, exercise: e.target.value } })}
+                            className="w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50"
+                          >
+                            <option value="Sedentary">Sedentary</option>
+                            <option value="Light">Light</option>
+                            <option value="Moderate">Moderate</option>
+                            <option value="Active">Active</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">Review of Systems</label>
