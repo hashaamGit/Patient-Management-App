@@ -5,11 +5,13 @@ import {
   Target, ClipboardList, Sparkles, CheckCircle2, Heart, Scissors, Users,
   Briefcase, Plus, X, Clock, Copy, Check, Activity
 } from 'lucide-react';
+import { generateContextualTreatmentRecommendations } from '../utils/clinicalContextReasoning';
 
 export const SOAPNotes = () => {
   const {
     soapNote, updateSOAPSection, resetSOAPNote, patient, prescription, saveCurrentCase,
-    patientHistory, updatePatientHistory, clinicalNotes, updateClinicalNotes
+    patientHistory, updatePatientHistory, clinicalNotes, updateClinicalNotes,
+    inventory, addPrescriptionItem, addLab, setAdvice
   } = useAppStore();
   
   const [expanded, setExpanded] = useState({
@@ -84,6 +86,54 @@ export const SOAPNotes = () => {
         diagnoses: Array.from(new Set([...soapNote.assessment.diagnoses, ...prescription.diagnosis]))
       });
     }
+  };
+
+  const handleSuggestTreatment = () => {
+    const plan = generateContextualTreatmentRecommendations({
+      patient,
+      patientHistory,
+      soapNote,
+      inventory,
+      clinicalNotes
+    });
+
+    const medsStr = plan.suggestedMedications.map(m => 
+      `${m.brandName ? `${m.brandName} (${m.genericName})` : m.genericName} ${m.strength} - ${m.dosage} ${m.frequency} x ${m.duration}\n  [Rationale: ${m.clinicalRationale}]`
+    ).join('\n\n');
+
+    const labsStr = plan.suggestedLabs.map(l => `• ${l.name} (${l.reason})`).join('\n');
+    
+    const supportiveStr = [
+      ...plan.supportiveTreatments.map(s => `• ${s.title}: ${s.detail}`),
+      plan.clinicalAdviceSummary
+    ].join('\n\n');
+
+    updateSOAPSection('plan', {
+      ...soapNote.plan,
+      medications: soapNote.plan.medications ? `${soapNote.plan.medications}\n\n${medsStr}` : medsStr,
+      labsOrdered: soapNote.plan.labsOrdered ? `${soapNote.plan.labsOrdered}\n\n${labsStr}` : labsStr,
+      patientEducation: soapNote.plan.patientEducation ? `${soapNote.plan.patientEducation}\n\n${supportiveStr}` : supportiveStr,
+    });
+
+    // Also sync to prescription pad
+    plan.suggestedMedications.forEach(m => {
+      addPrescriptionItem({
+        genericName: m.genericName,
+        brandName: m.brandName,
+        strength: m.strength,
+        form: m.form,
+        route: m.route,
+        dosage: m.dosage,
+        frequency: m.frequency,
+        duration: m.duration,
+        instructions: m.instructions || m.clinicalRationale
+      });
+    });
+
+    plan.suggestedLabs.forEach(l => addLab(l.name));
+    if (plan.clinicalAdviceSummary) setAdvice(plan.clinicalAdviceSummary);
+
+    alert(`✓ Contextual plan synthesized!\n• ${plan.suggestedMedications.length} tailored medications added\n• Labs and patient advice populated based on vitals & history.`);
   };
 
   const applyTemplate = (templateId: string) => {
@@ -681,16 +731,34 @@ export const SOAPNotes = () => {
 
         {/* P: Plan */}
         <div className="card overflow-hidden border-l-4 border-l-teal-500">
-          <button 
-            onClick={() => toggleSection('P')}
-            className="w-full flex items-center justify-between p-4 bg-gray-50/50 hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
+          <div className="w-full flex items-center justify-between p-4 bg-gray-50/50 hover:bg-gray-50 transition-colors">
+            <button 
+              type="button"
+              onClick={() => toggleSection('P')}
+              className="flex items-center gap-2 flex-1 text-left"
+            >
               <ClipboardList className="w-5 h-5 text-teal-600" />
               <h3 className="font-bold text-gray-900">Plan</h3>
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSuggestTreatment}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-md text-xs font-bold transition-all shadow-xs"
+                title="Synthesize and populate plan from patient's vitals, history, and SOAP assessment"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Suggest Plan from Vitals &amp; History</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleSection('P')}
+                className="p-1 text-gray-400 hover:text-gray-600"
+              >
+                {expanded.P ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+              </button>
             </div>
-            {expanded.P ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-          </button>
+          </div>
           
           {expanded.P && (
             <div className="p-4 space-y-4 border-t border-border">

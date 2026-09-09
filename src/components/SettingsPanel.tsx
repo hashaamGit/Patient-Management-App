@@ -20,7 +20,7 @@ export const SettingsPanel = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(savedCases, null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href",     dataStr);
-    downloadAnchorNode.setAttribute("download", `clinrail_backup_${new Date().toISOString().split('T')[0]}.json`);
+    downloadAnchorNode.setAttribute("download", `hassanco_backup_${new Date().toISOString().split('T')[0]}.json`);
     document.body.appendChild(downloadAnchorNode); // required for firefox
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
@@ -28,6 +28,7 @@ export const SettingsPanel = () => {
 
   const clearData = () => {
     if(window.confirm('Are you sure you want to clear all saved cases? This cannot be undone.')) {
+      localStorage.removeItem('hassanco-storage');
       localStorage.removeItem('clinrail-v4-storage');
       window.location.reload();
     }
@@ -266,9 +267,9 @@ export const SettingsPanel = () => {
               </div>
 
               <div className="mt-8 pt-6 border-t border-border flex flex-col items-center justify-center text-text-muted">
-                <div className="text-lg font-bold tracking-widest mb-1 text-gray-400">CLIN/RAIL</div>
-                <div className="text-xs">Version 4.0.0</div>
-                <div className="text-xs mt-1">Local Mode Active</div>
+                <div className="text-base font-bold tracking-wider mb-1 text-primary-light">Hassan &amp; Co. Healthcare Systems</div>
+                <div className="text-xs">Version 5.0.0 Enterprise</div>
+                <div className="text-xs mt-1">Local &amp; Secure Cloud Mode Active</div>
               </div>
             </div>
           )}

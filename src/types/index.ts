@@ -1,6 +1,4 @@
-// ============================================================
-// CLIN/RAIL V4 — Core Type Definitions
-// ============================================================
+// Hassan and Co. Healthcare Systems — Core Type Definitions
 
 // ---- Patient & Demographics ----
 
@@ -241,4 +239,35 @@ export interface NEWS2Score {
   total: number;
   risk: 'Low' | 'Low-Medium' | 'Medium' | 'High';
   components: Record<string, number>;
+}
+
+// ---- Hospital Inventory & Pharmacy ----
+
+export type InventoryCategory =
+  | 'Pharmaceuticals'
+  | 'Medical Machinery & Equipment'
+  | 'Cleaning & Sanitization Supplies'
+  | 'Hospital Electronics & IT'
+  | 'Medical & Surgical Consumables'
+  | 'Antibiotics'
+  | 'Analgesics'
+  | 'Cardiovascular'
+  | 'Antidiabetic'
+  | 'Respiratory'
+  | 'IV Fluids'
+  | 'Other';
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  category: InventoryCategory;
+  stock: number;
+  minStock: number;
+  unit: string;
+  batchNo: string;
+  expiryDate: string;
+  unitPrice: number;
+  sellingPrice: number;
+  equipmentStatus?: 'Operational' | 'Maintenance Due' | 'Under Repair';
+  location?: string;
 }

@@ -8,8 +8,10 @@ import {
   Activity, Stethoscope, FileText, BrainCircuit, Search,
   ArrowLeft, CheckCircle2, AlertTriangle, ArrowRight, Pill,
   FlaskConical, BookOpen, ShieldAlert, Zap, Target,
-  ChevronDown, ChevronUp, Clock, Plus, Sparkles, Check
+  ChevronDown, ChevronUp, Clock, Plus, Sparkles, Check,
+  User, Heart, ShieldCheck, AlertCircle
 } from 'lucide-react';
+import { generateContextualTreatmentRecommendations, type ContextualTreatmentPlan } from '../utils/clinicalContextReasoning';
 
 type TabType = 'symptoms' | 'diseases' | 'ai';
 
@@ -162,7 +164,7 @@ export const getLabShortRationale = (labName: string): string => {
 };
 
 export const DiagnosticEngine: React.FC = () => {
-  const { patient, addPrescriptionItem, setAdvice, addDiagnosis, addLab, inventory } = useAppStore();
+  const { patient, patientHistory, soapNote, clinicalNotes, addPrescriptionItem, setAdvice, addDiagnosis, addLab, inventory } = useAppStore();
 
   // Navigation & View State
   const [activeTab, setActiveTab] = useState<TabType>('symptoms');
@@ -223,14 +225,27 @@ export const DiagnosticEngine: React.FC = () => {
     stepwiseQuestions: string[];
     redFlags: string[];
     recommendedLabs: string[];
-    suggestedTreatment: Array<{ generic: string; brand: string; dose: string; freq: string; dur: string }>;
+    suggestedTreatment: Array<{
+      generic: string;
+      brand: string;
+      dose: string;
+      freq: string;
+      dur: string;
+      instructions?: string;
+      rationale?: string;
+      category?: string;
+      inStock?: boolean;
+      stockPrice?: number;
+      isPediatricDosed?: boolean;
+    }>;
     clinicalNotes: string;
+    contextualPlan?: ContextualTreatmentPlan;
   } | null>(null);
   const [transferToast, setTransferToast] = useState<string | null>(null);
 
-  // Synthesize combined pathway from selected symptoms & diseases
+  // Synthesize combined pathway from selected symptoms & diseases + patient context
   const handleSynthesizePathway = () => {
-    if (selectedSymptoms.length === 0 && selectedDiseases.length === 0) return;
+    if (selectedSymptoms.length === 0 && selectedDiseases.length === 0 && !aiPrompt) return;
     const promptParts = [];
     if (selectedSymptoms.length > 0) {
       promptParts.push(`Presenting Complaints: ${selectedSymptoms.join(', ')}`);
@@ -238,7 +253,7 @@ export const DiagnosticEngine: React.FC = () => {
     if (selectedDiseases.length > 0) {
       promptParts.push(`Suspected Conditions: ${selectedDiseases.join(', ')}`);
     }
-    const combinedPrompt = promptParts.join(' | ');
+    const combinedPrompt = promptParts.join(' | ') || aiPrompt;
     setAiPrompt(combinedPrompt);
     setActiveTab('ai');
     
@@ -260,12 +275,7 @@ export const DiagnosticEngine: React.FC = () => {
         'Any known drug allergies or chronic steroid use?'
       ];
       let redFlags = ['SpO2 < 92% on room air', 'Tachypnea > 28 bpm', 'Cyanosis or altered mental status'];
-      let labs = ['CBC with Differential', 'Chest X-Ray (PA View)', 'C-Reactive Protein (CRP)'];
-      let meds = [
-        { generic: 'Cefixime', brand: 'Cefspan', dose: '400mg', freq: 'OD', dur: '5 Days' },
-        { generic: 'Paracetamol', brand: 'Panadol', dose: '500mg', freq: 'TDS', dur: '3 Days' },
-        { generic: 'Montelukast', brand: 'Myteka', dose: '10mg', freq: 'HS', dur: '7 Days' }
-      ];
+      let defaultLabs = ['CBC with Differential', 'Chest X-Ray (PA View)', 'C-Reactive Protein (CRP)'];
 
       if (isCardio) {
         diffs = [
@@ -275,12 +285,7 @@ export const DiagnosticEngine: React.FC = () => {
         ];
         questions = ['Is pain retrosternal and crushing in quality?', 'Any radiation to left jaw, arm, or shoulder?', 'Are diaphoresis, dyspnea, or nausea present?'];
         redFlags = ['Hemodynamic instability (BP < 90/60)', 'New ST elevations or bundle branch block', 'Syncope or diaphoresis'];
-        labs = ['ECG 12-Lead STAT', 'Troponin-I Quantitative', 'Serum Electrolytes & Creatinine'];
-        meds = [
-          { generic: 'Aspirin', brand: 'Disprin Chewable', dose: '300mg', freq: 'STAT', dur: 'Single dose' },
-          { generic: 'Clopidogrel', brand: 'Plavix', dose: '300mg', freq: 'STAT', dur: 'Single dose' },
-          { generic: 'Rosuvastatin', brand: 'X-Plat', dose: '20mg', freq: 'OD', dur: '30 Days' }
-        ];
+        defaultLabs = ['ECG 12-Lead STAT', 'Troponin-I Quantitative', 'Serum Electrolytes & Creatinine'];
       } else if (isGI) {
         diffs = [
           { name: 'Acute Appendicitis', probability: 82, rationale: 'RLQ tenderness with local peritoneal signs' },
@@ -289,21 +294,52 @@ export const DiagnosticEngine: React.FC = () => {
         ];
         questions = ['Did pain migrate from umbilicus to right lower quadrant?', 'Any rebound tenderness or involuntary guarding?', 'Associated high fever or severe anorexia?'];
         redFlags = ['Peritoneal rigidity', 'Persistent bilious vomiting', 'Hypotension / septic shock'];
-        labs = ['Ultrasound Abdomen / Pelvis', 'CBC with Differential', 'Serum Electrolytes & Creatinine'];
-        meds = [
-          { generic: 'Ciprofloxacin', brand: 'Ciproxin', dose: '500mg', freq: 'BD', dur: '5 Days' },
-          { generic: 'Metronidazole', brand: 'Flagyl', dose: '400mg', freq: 'TDS', dur: '5 Days' },
-          { generic: 'Omeprazole', brand: 'Risek', dose: '40mg', freq: 'OD', dur: '14 Days' }
-        ];
+        defaultLabs = ['Ultrasound Abdomen / Pelvis', 'CBC with Differential', 'Serum Electrolytes & Creatinine'];
       }
+
+      // Generate Patient Context-Aware Recommendations
+      const contextualPlan = generateContextualTreatmentRecommendations({
+        patient,
+        patientHistory,
+        soapNote,
+        inventory,
+        activeSymptoms: selectedSymptoms,
+        activeDiseases: selectedDiseases,
+        clinicalNotes: combinedPrompt
+      });
+
+      const combinedLabs = Array.from(new Set([
+        ...contextualPlan.suggestedLabs.map(l => l.name),
+        ...defaultLabs
+      ]));
+
+      const combinedRedFlags = Array.from(new Set([
+        ...contextualPlan.patientSummary.abnormalVitals.map(v => `Vital Sign Alert: ${v}`),
+        ...redFlags
+      ]));
+
+      const meds = contextualPlan.suggestedMedications.map(m => ({
+        generic: m.genericName,
+        brand: m.brandName,
+        dose: m.dosage,
+        freq: m.frequency,
+        dur: m.duration,
+        instructions: m.instructions,
+        rationale: m.clinicalRationale,
+        category: m.category,
+        inStock: m.inStock,
+        stockPrice: m.stockPrice,
+        isPediatricDosed: m.isPediatricDosed
+      }));
 
       setAiResult({
         differentials: diffs,
         stepwiseQuestions: questions,
-        redFlags: redFlags,
-        recommendedLabs: labs,
+        redFlags: combinedRedFlags,
+        recommendedLabs: combinedLabs,
         suggestedTreatment: meds,
-        clinicalNotes: `Comprehensive synthesized pathway for: ${combinedPrompt}.\nExamine vitals, check ECG/labs, and prioritize in-stock hospital pharmacy medications.`
+        clinicalNotes: contextualPlan.clinicalAdviceSummary,
+        contextualPlan
       });
       setAiAnalyzing(false);
     }, 600);
@@ -507,13 +543,12 @@ export const DiagnosticEngine: React.FC = () => {
     return false;
   }, [patient.age]);
 
-  // Run AI Clinical Reasoning Engine
+  // Run AI Clinical Reasoning Engine (incorporates active patient context)
   const handleRunAiAnalysis = () => {
     if (!aiPrompt.trim()) return;
     setAiAnalyzing(true);
     setAiResult(null);
 
-    // Simulate sophisticated clinical differential synthesis
     setTimeout(() => {
       const promptLower = aiPrompt.toLowerCase();
       
@@ -521,45 +556,62 @@ export const DiagnosticEngine: React.FC = () => {
       let confidence = 75;
       let secondaryDiff = 'Underlying Systemic or Metabolic Etiology';
       let redFlags = ['Unstable hemodynamic parameters', 'Altered sensorium or severe diaphoresis'];
-      let labs = ['CBC, ESR, CRP', 'Electrolyte & Renal Panel', 'Standard 12-Lead ECG'];
-      let meds = [
-        { genericName: 'Paracetamol', brandName: 'Panadol', dose: '1 Tab', freq: 'TDS', dur: '3 Days' },
-        { genericName: 'Omeprazole', brandName: 'Risek', dose: '20mg', freq: 'OD (Before breakfast)', dur: '14 Days' }
-      ];
+      let defaultLabs = ['CBC, ESR, CRP', 'Electrolyte & Renal Panel', 'Standard 12-Lead ECG'];
 
       if (promptLower.includes('chest') || promptLower.includes('heart') || promptLower.includes('pressure')) {
         primaryDiff = 'Acute Coronary Syndrome (ACS) / Unstable Angina';
         confidence = 82;
         secondaryDiff = 'Gastroesophageal Reflux Disease (GERD) vs Musculoskeletal Costochondritis';
         redFlags = ['Radiation to left jaw or arm', 'Diaphoresis and dyspnea at rest', 'Elevated cardiac biomarkers'];
-        labs = ['Serial High-Sensitivity Troponin I', '12-Lead ECG Q30M', 'Chest X-Ray (PA View)', 'D-Dimer'];
-        meds = [
-          { genericName: 'Aspirin (Dispersible)', brandName: 'Disprin', dose: '300mg', freq: 'STAT (Immediate)', dur: 'Single dose' },
-          { genericName: 'Clopidogrel', brandName: 'Plavix', dose: '300mg', freq: 'STAT (Immediate)', dur: 'Single dose' },
-          { genericName: 'Glyceryl Trinitrate', brandName: 'Nitroglycerin', dose: '0.5mg SL', freq: 'PRN for chest pain', dur: 'Emergency' }
-        ];
+        defaultLabs = ['Serial High-Sensitivity Troponin I', '12-Lead ECG Q30M', 'Chest X-Ray (PA View)', 'D-Dimer'];
       } else if (promptLower.includes('cough') || promptLower.includes('breath') || promptLower.includes('fever')) {
         primaryDiff = 'Community-Acquired Pneumonia (CAP) vs Bronchitis';
         confidence = 78;
         secondaryDiff = 'Upper Respiratory Tract Infection with Reactive Airway Disease';
         redFlags = ['SpO2 < 92% on room air', 'Respiratory rate > 28/min', 'Hemoptysis or confusion'];
-        labs = ['Chest X-Ray (PA View)', 'CBC with Absolute Neutrophil Count', 'Sputum Gram Stain & C/S', 'Serum Procalcitonin'];
-        meds = [
-          { genericName: 'Amoxicillin + Clavulanic Acid', brandName: 'Augmentin', dose: '625mg', freq: 'BD (Every 12h)', dur: '7 Days' },
-          { genericName: 'Azithromycin', brandName: 'Azomax', dose: '500mg', freq: 'OD', dur: '3 Days' },
-          { genericName: 'Paracetamol', brandName: 'Panadol', dose: '500mg', freq: 'TDS', dur: '5 Days' }
-        ];
+        defaultLabs = ['Chest X-Ray (PA View)', 'CBC with Absolute Neutrophil Count', 'Sputum Gram Stain & C/S', 'Serum Procalcitonin'];
       } else if (promptLower.includes('abdom') || promptLower.includes('pain') || promptLower.includes('stomach') || promptLower.includes('rlq')) {
         primaryDiff = 'Acute Appendicitis vs Acute Mesenteric Adenitis';
         confidence = 72;
         secondaryDiff = 'Acute Gastroenteritis with localized peritoneal irritation';
         redFlags = ['Rebound tenderness / Guarding', 'Inability to keep oral fluids', 'High grade fever with tachycardia'];
-        labs = ['Ultrasound Whole Abdomen & Pelvis', 'CBC (Look for Leukocytosis > 12,000)', 'Urinalysis (R/E)', 'Serum Lipase & Amylase'];
-        meds = [
-          { genericName: 'Ceftriaxone IV', brandName: 'Rocephin', dose: '1g', freq: 'BD', dur: 'Emergency Order' },
-          { genericName: 'Metronidazole IV', brandName: 'Flagyl', dose: '500mg', freq: 'TDS', dur: 'Emergency Order' }
-        ];
+        defaultLabs = ['Ultrasound Whole Abdomen & Pelvis', 'CBC (Look for Leukocytosis > 12,000)', 'Urinalysis (R/E)', 'Serum Lipase & Amylase'];
       }
+
+      // Generate Patient Context-Aware Recommendations
+      const contextualPlan = generateContextualTreatmentRecommendations({
+        patient,
+        patientHistory,
+        soapNote,
+        inventory,
+        activeSymptoms: selectedSymptoms,
+        activeDiseases: selectedDiseases,
+        clinicalNotes: promptLower
+      });
+
+      const combinedLabs = Array.from(new Set([
+        ...contextualPlan.suggestedLabs.map(l => l.name),
+        ...defaultLabs
+      ]));
+
+      const combinedRedFlags = Array.from(new Set([
+        ...contextualPlan.patientSummary.abnormalVitals.map(v => `Vital Sign Alert: ${v}`),
+        ...redFlags
+      ]));
+
+      const meds = contextualPlan.suggestedMedications.map(m => ({
+        generic: m.genericName,
+        brand: m.brandName,
+        dose: m.dosage,
+        freq: m.frequency,
+        dur: m.duration,
+        instructions: m.instructions,
+        rationale: m.clinicalRationale,
+        category: m.category,
+        inStock: m.inStock,
+        stockPrice: m.stockPrice,
+        isPediatricDosed: m.isPediatricDosed
+      }));
 
       setAiResult({
         differentials: [
@@ -572,10 +624,11 @@ export const DiagnosticEngine: React.FC = () => {
           'Are there any aggravating factors (movement, meals, position) or relieving factors?',
           'Have you noticed any associated autonomic signs (chills, diaphoresis, lightheadedness)?'
         ],
-        redFlags,
-        recommendedLabs: labs,
+        redFlags: combinedRedFlags,
+        recommendedLabs: combinedLabs,
         suggestedTreatment: meds,
-        clinicalNotes: 'Computed via Hassan and Co. Clinical Reasoning Engine. Verified against patient demographics and current vital observations.'
+        clinicalNotes: contextualPlan.clinicalAdviceSummary,
+        contextualPlan
       });
       setAiAnalyzing(false);
     }, 850);
@@ -583,23 +636,25 @@ export const DiagnosticEngine: React.FC = () => {
 
   const handleTransferAiResult = () => {
     if (!aiResult) return;
-    addDiagnosis(aiResult.differentials[0].name);
+    if (aiResult.differentials && aiResult.differentials[0]) {
+      addDiagnosis(aiResult.differentials[0].name);
+    }
     aiResult.recommendedLabs.forEach(lab => addLab(lab));
     aiResult.suggestedTreatment.forEach(med => {
       addPrescriptionItem({
-        genericName: med.genericName,
-        brandName: med.brandName,
+        genericName: med.generic || (med as any).genericName,
+        brandName: med.brand || (med as any).brandName,
         strength: 'Standard',
         form: 'Tab',
         route: 'Oral',
         dosage: med.dose,
         frequency: med.freq,
         duration: med.dur,
-        instructions: 'Take as directed by physician.'
+        instructions: med.instructions || (med.rationale ? `${med.rationale} • Take as directed.` : 'Take as directed by physician.')
       });
     });
     setAdvice(aiResult.clinicalNotes);
-    setTransferToast(`AI Differential & Recommended Rx transferred successfully!`);
+    setTransferToast(`AI Differential & Contextual Rx transferred to pad successfully!`);
     setTimeout(() => setTransferToast(null), 3500);
   };
 
@@ -927,19 +982,37 @@ export const DiagnosticEngine: React.FC = () => {
       {/* Patient Vitals & Safety Context Banner */}
       <div className="p-3.5 rounded-xl bg-surface border border-border flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
         <div>
-          <span className="text-text-muted font-medium">Patient Context: </span>
+          <span className="text-text-muted font-medium">Active Patient Context: </span>
           <strong className="text-text-primary">{patient.name || 'Anonymous Patient'}</strong>
-          <span className="text-text-secondary ml-1">({patient.age || 'Adult'} / {patient.gender || 'Unknown'})</span>
+          <span className="text-text-secondary ml-1">({patient.age || 'Adult'} • {patient.gender || 'Unspecified'} • {patient.weight ? `${patient.weight} kg` : 'Std wt'})</span>
         </div>
         <div className="flex items-center gap-3">
-          {patient.bp && <span>BP: <strong>{patient.bp}</strong></span>}
-          {patient.temperature && <span>Temp: <strong>{patient.temperature} °C</strong></span>}
+          {patient.bp && (
+            <span className="bg-canvas px-2 py-0.5 rounded border border-border">
+              BP: <strong>{patient.bp}</strong>
+            </span>
+          )}
+          {patient.pulse && (
+            <span className="bg-canvas px-2 py-0.5 rounded border border-border">
+              HR: <strong>{patient.pulse} bpm</strong>
+            </span>
+          )}
+          {patient.temperature && (
+            <span className="bg-canvas px-2 py-0.5 rounded border border-border">
+              Temp: <strong>{patient.temperature} °C</strong>
+            </span>
+          )}
+          {patient.spo2 && (
+            <span className="bg-canvas px-2 py-0.5 rounded border border-border">
+              SpO2: <strong>{patient.spo2}%</strong>
+            </span>
+          )}
           {patient.allergies && patient.allergies.length > 0 ? (
             <span className="text-danger font-bold bg-danger/10 px-2 py-0.5 rounded-full border border-danger/20">
               Allergy: {patient.allergies.map(a => a.name).join(', ')}
             </span>
           ) : (
-            <span className="text-emerald-600 font-medium">NKDA</span>
+            <span className="text-emerald-600 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">NKDA</span>
           )}
         </div>
       </div>
@@ -948,17 +1021,43 @@ export const DiagnosticEngine: React.FC = () => {
       <div className="space-y-2">
         <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider flex items-center justify-between">
           <span>Clinical Intake &amp; Presenting Complaint</span>
-          <span className="text-teal-600 font-semibold lowercase">ai differential engine</span>
+          <span className="text-teal-600 font-semibold lowercase">ai clinical reasoning engine</span>
         </label>
         
         <div className="relative">
           <textarea
             value={aiPrompt}
             onChange={(e) => setAiPrompt(e.target.value)}
-            placeholder="Type or paste patient symptoms (e.g. '55M sudden severe retrosternal chest pain with diaphoresis and left arm numbness' or 'child with barking cough and stridor')..."
+            placeholder="Type symptoms or click below to synthesize based on current patient's vitals, history, and SOAP notes..."
             className="w-full h-28 p-3.5 bg-surface border border-border rounded-xl text-xs text-text-primary resize-none focus:outline-none focus:border-primary shadow-inner placeholder:text-text-faint"
           />
           <div className="absolute bottom-3 right-3 flex items-center gap-2">
+            <button
+              onClick={() => {
+                const parts: string[] = [];
+                if (patient.name) parts.push(`Patient ${patient.name} (${patient.age || 'Adult'} ${patient.gender || ''})`);
+                if (soapNote.subjective?.chiefComplaint) parts.push(`Chief Complaint: ${soapNote.subjective.chiefComplaint}`);
+                if (soapNote.subjective?.hpiNarrative) parts.push(`HPI: ${soapNote.subjective.hpiNarrative}`);
+                if (patient.bp || patient.temperature || patient.pulse) {
+                  parts.push(`Vitals: BP ${patient.bp || '--'}, HR ${patient.pulse || '--'}, Temp ${patient.temperature || '--'}°C, SpO2 ${patient.spo2 || '--'}%`);
+                }
+                if (patientHistory.pastMedical && patientHistory.pastMedical.length > 0) {
+                  parts.push(`History: ${patientHistory.pastMedical.join(', ')}`);
+                }
+                if (soapNote.assessment?.diagnoses && soapNote.assessment.diagnoses.length > 0) {
+                  parts.push(`Assessment: ${soapNote.assessment.diagnoses.join(', ')}`);
+                }
+                const synthesized = parts.join(' | ') || 'Comprehensive evaluation of active patient symptoms and vitals';
+                setAiPrompt(synthesized);
+              }}
+              type="button"
+              className="px-3 py-1.5 bg-canvas hover:bg-surface text-text-secondary border border-border rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              title="Auto-fill text from current patient's vitals, history, and SOAP note"
+            >
+              <FileText size={13} className="text-primary" />
+              <span>Pull Patient Data</span>
+            </button>
+
             <button
               onClick={handleRunAiAnalysis}
               disabled={aiAnalyzing || !aiPrompt.trim()}
@@ -980,7 +1079,7 @@ export const DiagnosticEngine: React.FC = () => {
         </div>
       </div>
 
-      {/* Sample Fast Intake Buttons */}
+      {/* Fast Intake Scenarios */}
       <div className="space-y-1.5">
         <div className="text-[11px] font-semibold text-text-muted">Instant Clinical Scenarios:</div>
         <div className="flex flex-wrap gap-2">
@@ -1012,12 +1111,78 @@ export const DiagnosticEngine: React.FC = () => {
             </div>
             <button
               onClick={handleTransferAiResult}
-              className="px-3 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all"
+              className="px-3.5 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all"
             >
               <Check className="w-3.5 h-3.5" />
               <span>Transfer All to Rx Pad</span>
             </button>
           </div>
+
+          {/* Patient Context Applied Card */}
+          {aiResult.contextualPlan?.patientSummary && (
+            <div className="p-3.5 rounded-xl bg-canvas border border-teal-500/20 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-teal-600 flex items-center gap-1.5 uppercase tracking-wide text-[11px]">
+                  <ShieldCheck size={14} /> Patient Factors Integrated Into Recommendations
+                </span>
+                <span className="text-[10px] text-text-muted">Hassan &amp; Co. Reasoning Protocol</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2 rounded bg-surface border border-border space-y-0.5">
+                  <div className="font-semibold text-text-primary flex items-center gap-1">
+                    <Activity size={12} className="text-primary" /> Vitals Evaluated:
+                  </div>
+                  <div className="text-text-secondary">{aiResult.contextualPlan.patientSummary.vitalsSummary}</div>
+                  {aiResult.contextualPlan.patientSummary.abnormalVitals.length > 0 && (
+                    <div className="pt-1 flex flex-wrap gap-1">
+                      {aiResult.contextualPlan.patientSummary.abnormalVitals.map((v, i) => (
+                        <span key={i} className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                          {v}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-2 rounded bg-surface border border-border space-y-0.5">
+                  <div className="font-semibold text-text-primary flex items-center gap-1">
+                    <Heart size={12} className="text-danger" /> History &amp; Comorbidities:
+                  </div>
+                  <div className="text-text-secondary">
+                    {aiResult.contextualPlan.patientSummary.relevantHistory.length > 0 
+                      ? aiResult.contextualPlan.patientSummary.relevantHistory.join(' • ')
+                      : (patientHistory.pastMedical?.join(', ') || 'No chronic diseases recorded')}
+                  </div>
+                </div>
+
+                {aiResult.contextualPlan.patientSummary.soapFindings.length > 0 && (
+                  <div className="p-2 rounded bg-surface border border-border space-y-0.5 md:col-span-2">
+                    <div className="font-semibold text-text-primary flex items-center gap-1">
+                      <FileText size={12} className="text-teal-600" /> SOAP Findings Factored In:
+                    </div>
+                    <div className="text-text-secondary">{aiResult.contextualPlan.patientSummary.soapFindings.join(' • ')}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Withheld Contraindications Alert */}
+          {aiResult.contextualPlan?.withheldContraindications && aiResult.contextualPlan.withheldContraindications.length > 0 && (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-1.5">
+              <h5 className="font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                <ShieldAlert size={14} /> Contraindicated Medications Withheld for Patient Safety:
+              </h5>
+              <div className="space-y-1 text-[11px]">
+                {aiResult.contextualPlan.withheldContraindications.map((c, i) => (
+                  <div key={i} className="flex items-start gap-1.5 text-amber-900 dark:text-amber-200">
+                    <span className="font-bold">✕ {c.medication}:</span>
+                    <span>{c.reason} ({c.source})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Probabilities Bars */}
           <div className="space-y-2.5">
@@ -1036,7 +1201,7 @@ export const DiagnosticEngine: React.FC = () => {
             ))}
           </div>
 
-          {/* Stepwise Investigative Questions */}
+          {/* Stepwise Questions */}
           <div className="space-y-2">
             <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider">Next Stepwise Clinical Questions</h4>
             <div className="space-y-1 text-xs">
@@ -1049,11 +1214,11 @@ export const DiagnosticEngine: React.FC = () => {
             </div>
           </div>
 
-          {/* Red Flags, Labs & Recommended Treatment */}
+          {/* Red Flags & Labs */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div className="p-3 rounded-lg bg-danger-bg border border-danger/20 space-y-1.5">
               <h5 className="font-bold text-danger flex items-center gap-1.5">
-                <AlertTriangle size={14} /> Red Flags to Rule Out
+                <AlertTriangle size={14} /> Red Flags &amp; Vital Alerts
               </h5>
               <ul className="list-disc list-inside text-danger-text space-y-0.5 text-[11px]">
                 {aiResult.redFlags.map((rf, i) => <li key={i}>{rf}</li>)}
@@ -1075,14 +1240,45 @@ export const DiagnosticEngine: React.FC = () => {
             </div>
           </div>
 
-          {/* Recommended Treatments with In-Stock Inventory Priority */}
+          {/* Non-Pharmacological & Supportive Care */}
+          {aiResult.contextualPlan?.supportiveTreatments && aiResult.contextualPlan.supportiveTreatments.length > 0 && (
+            <div className="p-3 rounded-xl bg-teal-500/5 border border-teal-500/20 space-y-1.5 text-xs">
+              <h4 className="font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <Activity size={14} /> Supportive &amp; Non-Pharmacological Interventions
+              </h4>
+              <div className="space-y-1.5 text-[11px]">
+                {aiResult.contextualPlan.supportiveTreatments.map((st, i) => (
+                  <div key={i} className="p-2 rounded bg-surface border border-border flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-text-primary flex items-center gap-1.5">
+                        <span>{st.title}</span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-teal-500/10 text-teal-600 border border-teal-500/20">
+                          {st.priority}
+                        </span>
+                      </div>
+                      <div className="text-text-secondary mt-0.5">{st.detail}</div>
+                    </div>
+                    <div className="text-[10px] text-text-muted italic shrink-0 max-w-[140px] text-right">
+                      {st.rationale}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recommended Medications with Patient-Context Rationales & Stock Prioritization */}
           {aiResult.suggestedTreatment && aiResult.suggestedTreatment.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-border">
-              <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
-                <Pill size={14} className="text-primary" />
-                Recommended Medications (Stock Prioritized)
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                  <Pill size={14} className="text-primary" />
+                  Personalized Medications (Vitals, History &amp; Stock Matched)
+                </h4>
+                <span className="text-[10px] text-emerald-600 font-semibold">Prioritizing In-Stock Hospital Inventory</span>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {aiResult.suggestedTreatment
                   .slice()
                   .sort((a, b) => {
@@ -1093,20 +1289,64 @@ export const DiagnosticEngine: React.FC = () => {
                   .map((med, i) => {
                     const stock = checkInventoryStock(med.generic, med.brand);
                     return (
-                      <div key={i} className="p-2.5 rounded-lg bg-canvas border border-border space-y-1 text-xs">
-                        <div className="font-bold text-text-primary flex items-center justify-between">
-                          <span>{med.brand || med.generic}</span>
-                        </div>
-                        <div className="text-[11px] text-text-muted">{med.dose} • {med.freq} ({med.dur})</div>
-                        {stock.inStock ? (
-                          <div className="text-[10px] font-bold text-emerald-700 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 inline-block">
-                            ✓ In Stock (₨ {stock.price})
+                      <div key={i} className="p-3 rounded-xl bg-canvas border border-border space-y-1.5 text-xs shadow-2xs hover:border-teal-500/50 transition-colors">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="font-bold text-text-primary text-sm">{med.brand || med.generic}</span>
+                            {med.brand && med.generic && (
+                              <span className="text-[11px] text-text-muted ml-1">({med.generic})</span>
+                            )}
                           </div>
-                        ) : (
-                          <div className="text-[10px] font-medium text-amber-700 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 inline-block">
-                            ⚠️ Out of Hospital Stock
+                          {med.isPediatricDosed && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 border border-blue-500/20 whitespace-nowrap">
+                              Pediatric Dosed
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="text-[11px] text-text-secondary font-medium">
+                          {med.dose} • {med.freq} ({med.dur})
+                        </div>
+
+                        {med.rationale && (
+                          <div className="p-1.5 rounded bg-surface border border-border text-[10px] text-text-secondary leading-snug">
+                            <strong className="text-teal-600">Why recommended: </strong>
+                            {med.rationale}
                           </div>
                         )}
+
+                        <div className="pt-1 flex items-center justify-between">
+                          {stock.inStock ? (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                              ✓ In Hospital Stock (₨ {stock.price})
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-amber-700 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                              ⚠️ Out of Hospital Stock
+                            </span>
+                          )}
+
+                          <button
+                            onClick={() => {
+                              addPrescriptionItem({
+                                genericName: med.generic,
+                                brandName: med.brand,
+                                strength: 'Standard',
+                                form: 'Tab',
+                                route: 'Oral',
+                                dosage: med.dose,
+                                frequency: med.freq,
+                                duration: med.dur,
+                                instructions: med.instructions || (med.rationale ? `${med.rationale} • Take as directed.` : 'Take as directed by physician.')
+                              });
+                              setTransferToast(`Added ${med.brand || med.generic} to Rx pad!`);
+                              setTimeout(() => setTransferToast(null), 2500);
+                            }}
+                            className="px-2 py-1 rounded bg-primary/10 hover:bg-primary text-primary hover:text-white font-bold text-[10px] flex items-center gap-1 transition-colors"
+                          >
+                            <Plus size={11} /> Add to Rx
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -1294,7 +1534,7 @@ export const DiagnosticEngine: React.FC = () => {
             <div className="max-w-xl mx-auto space-y-5">
               <div>
                 <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Step {currentStepId}</span>
-                <h2 className="text-lg font-bold text-text-primary mt-1">{currentStep.prompt}</h2>
+                <h2 className="text-lg font-bold text-text-primary mt-1">{currentStep.question}</h2>
               </div>
 
               <div className="space-y-2">

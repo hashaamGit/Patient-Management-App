@@ -353,9 +353,14 @@ interface AppState {
   toggleDarkMode: () => void;
 }
 
-// ============================================================
-// Store Implementation
-// ============================================================
+// Migrate legacy storage key if needed
+if (typeof window !== 'undefined' && !localStorage.getItem('hassanco-storage') && localStorage.getItem('clinrail-v4-storage')) {
+  try {
+    localStorage.setItem('hassanco-storage', localStorage.getItem('clinrail-v4-storage')!);
+  } catch (e) {
+    // ignore
+  }
+}
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -600,7 +605,7 @@ export const useAppStore = create<AppState>()(
           ],
         })),
       selectActivePatient: (pat) =>
-        set({
+        set((s) => ({
           patient: {
             ...initialPatient,
             name: pat.name,
@@ -614,12 +619,32 @@ export const useAppStore = create<AppState>()(
             pulse: pat.vitals?.pulse || '',
             weight: pat.vitals?.weight || '',
             allergies: pat.allergies.map(a => ({ name: a, severity: 'Moderate' as const, reaction: 'Documented Clinical Allergy' })),
+            comorbidities: pat.diagnoses || [],
+          },
+          patientHistory: {
+            ...s.patientHistory,
+            pastMedical: Array.from(new Set([...(s.patientHistory.pastMedical || []), ...(pat.diagnoses || [])])),
+          },
+          soapNote: {
+            ...s.soapNote,
+            subjective: {
+              ...s.soapNote.subjective,
+              chiefComplaint: s.soapNote.subjective.chiefComplaint || (pat.diagnoses?.[0] ? `Follow-up / Review: ${pat.diagnoses[0]}` : 'Clinical Consultation'),
+            },
+            objective: {
+              ...s.soapNote.objective,
+              vitalsSummary: pat.vitals ? `BP: ${pat.vitals.bp || '--'} | PR: ${pat.vitals.pulse || '--'} bpm | Temp: ${pat.vitals.temp || '--'}°C | Wt: ${pat.vitals.weight || '--'} kg` : '',
+            },
+            assessment: {
+              ...s.soapNote.assessment,
+              diagnoses: Array.from(new Set([...(s.soapNote.assessment.diagnoses || []), ...(pat.diagnoses || [])])),
+            }
           },
           prescription: {
             ...initialPrescription,
             diagnosis: pat.diagnoses || [],
           },
-        }),
+        })),
 
       // ---- Clinical Scratchpad ----
       clinicalNotes: '',
@@ -685,7 +710,7 @@ export const useAppStore = create<AppState>()(
       toggleDarkMode: () => set((s) => ({ darkMode: !s.darkMode })),
     }),
     {
-      name: 'clinrail-v4-storage',
+      name: 'hassanco-storage',
       partialize: (state) => ({
         currentUser: state.currentUser,
         savedCases: state.savedCases,

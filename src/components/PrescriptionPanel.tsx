@@ -6,8 +6,10 @@ import { format } from 'date-fns';
 import {
   Edit2, Save, Printer, Trash2, Plus, AlertTriangle, ShieldAlert,
   ChevronDown, ChevronUp, Pill, Star, X, Calculator, Info,
-  FileText, Clock, CheckCircle2, OctagonAlert, DollarSign, Globe
+  FileText, Clock, CheckCircle2, OctagonAlert, DollarSign, Globe,
+  Sparkles, ShieldCheck, Heart, Activity
 } from 'lucide-react';
+import { generateContextualTreatmentRecommendations } from '../utils/clinicalContextReasoning';
 
 export const URDU_FREQUENCY_MAP: Record<string, { en: string; ur: string }> = {
   'OD': { en: 'Once daily', ur: 'دن میں ایک بار' },
@@ -54,6 +56,9 @@ export const getUrduTiming = (instructions?: string, frequency?: string) => {
 export const PrescriptionPanel = () => {
   const {
     patient,
+    patientHistory,
+    soapNote,
+    clinicalNotes,
     prescription,
     doctorProfile,
     addPrescriptionItem,
@@ -78,6 +83,18 @@ export const PrescriptionPanel = () => {
   const [dosesPerDay, setDosesPerDay] = useState('');
   
   const [showFavorites, setShowFavorites] = useState(false);
+  const [showSmartSuggestions, setShowSmartSuggestions] = useState(false);
+
+  // Compute patient-context aware clinical treatment plan
+  const contextualPlan = useMemo(() => {
+    return generateContextualTreatmentRecommendations({
+      patient,
+      patientHistory,
+      soapNote,
+      inventory,
+      clinicalNotes
+    });
+  }, [patient, patientHistory, soapNote, inventory, clinicalNotes]);
   
   // Manual entry form
   const [manualEntry, setManualEntry] = useState({
@@ -325,6 +342,166 @@ export const PrescriptionPanel = () => {
       {/* MAIN CONTENT */}
       <div className="flex-1 overflow-y-auto print:hidden p-3 space-y-4">
         
+        {/* AI CONTEXTUAL SMART SUGGESTIONS */}
+        <div className="card overflow-hidden border border-teal-500/30 bg-surface shadow-xs">
+          <div 
+            onClick={() => setShowSmartSuggestions(!showSmartSuggestions)}
+            className="flex items-center justify-between p-3 bg-teal-500/10 hover:bg-teal-500/15 cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+              <div>
+                <span className="font-bold text-xs text-text-primary">
+                  AI Contextual Treatment Suggestions
+                </span>
+                <span className="text-[11px] text-text-muted ml-2">
+                  (Vitals, History, SOAP &amp; In-Stock Inventory)
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-500/20 text-teal-700 dark:text-teal-300">
+                {contextualPlan.suggestedMedications.length} Tailored Meds
+              </span>
+              {contextualPlan.patientSummary.abnormalVitals.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                  {contextualPlan.patientSummary.abnormalVitals.length} Vital Flags
+                </span>
+              )}
+              {showSmartSuggestions ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
+            </div>
+          </div>
+
+          {showSmartSuggestions && (
+            <div className="p-3 space-y-3 border-t border-border bg-canvas/50 text-xs">
+              {/* Context Summary Header */}
+              <div className="p-2.5 rounded-lg bg-surface border border-border space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-text-primary flex items-center gap-1">
+                    <ShieldCheck size={13} className="text-teal-600" />
+                    Patient Factors Evaluated:
+                  </span>
+                  <span className="text-[10px] text-text-muted">{contextualPlan.patientSummary.demographics}</span>
+                </div>
+                <div className="text-[11px] text-text-secondary">
+                  <strong>Vitals: </strong>{contextualPlan.patientSummary.vitalsSummary}
+                </div>
+                {contextualPlan.patientSummary.relevantHistory.length > 0 && (
+                  <div className="text-[11px] text-text-secondary">
+                    <strong>History: </strong>{contextualPlan.patientSummary.relevantHistory.join(' • ')}
+                  </div>
+                )}
+                {contextualPlan.patientSummary.soapFindings.length > 0 && (
+                  <div className="text-[11px] text-text-secondary">
+                    <strong>SOAP: </strong>{contextualPlan.patientSummary.soapFindings.join('; ')}
+                  </div>
+                )}
+              </div>
+
+              {/* Withheld Contraindications Alert */}
+              {contextualPlan.withheldContraindications.length > 0 && (
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-1 text-[11px]">
+                  <div className="font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                    <AlertTriangle size={12} /> Contraindicated Medications Withheld:
+                  </div>
+                  {contextualPlan.withheldContraindications.map((c, i) => (
+                    <div key={i} className="text-amber-800 dark:text-amber-300">
+                      • <strong>{c.medication}:</strong> {c.reason}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Suggested Meds List */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-text-muted uppercase text-[10px]">
+                    Tailored Medication Recommendations
+                  </span>
+                  <button
+                    onClick={() => {
+                      contextualPlan.suggestedMedications.forEach(m => {
+                        handleAddItem({
+                          genericName: m.genericName,
+                          brandName: m.brandName,
+                          strength: m.strength,
+                          form: m.form,
+                          route: m.route,
+                          dosage: m.dosage,
+                          frequency: m.frequency,
+                          duration: m.duration,
+                          instructions: m.instructions || m.clinicalRationale
+                        });
+                      });
+                    }}
+                    className="text-[10px] font-bold text-teal-600 hover:text-teal-700 underline"
+                  >
+                    + Add All ({contextualPlan.suggestedMedications.length}) to Rx Pad
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2">
+                  {contextualPlan.suggestedMedications.map((med) => (
+                    <div key={med.id} className="p-2.5 rounded-lg bg-surface border border-border flex items-start justify-between gap-2">
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-text-primary text-xs">{med.brandName || med.genericName}</span>
+                          {med.brandName && med.genericName && (
+                            <span className="text-[10px] text-text-muted">({med.genericName})</span>
+                          )}
+                          {med.isPediatricDosed && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                              Pediatric Dosed
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-text-secondary">
+                          {med.strength} • {med.dosage} • {med.frequency} x {med.duration}
+                        </div>
+                        <div className="text-[10px] text-teal-600 dark:text-teal-400 bg-canvas p-1 rounded border border-border leading-tight">
+                          <strong>Why recommended: </strong>{med.clinicalRationale}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        {med.inStock ? (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                            ✓ In Stock (₨ {med.stockPrice})
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                            ⚠️ Out of Stock
+                          </span>
+                        )}
+                        <button
+                          onClick={() => {
+                            handleAddItem({
+                              genericName: med.genericName,
+                              brandName: med.brandName,
+                              strength: med.strength,
+                              form: med.form,
+                              route: med.route,
+                              dosage: med.dosage,
+                              frequency: med.frequency,
+                              duration: med.duration,
+                              instructions: med.instructions || med.clinicalRationale
+                            });
+                          }}
+                          className="px-2.5 py-1 rounded bg-primary text-white text-[10px] font-bold hover:bg-primary/90 transition-colors flex items-center gap-1 shadow-2xs"
+                        >
+                          <Plus size={11} /> Add to Rx
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          )}
+        </div>
+
         {/* DIAGNOSES */}
         <div className="card p-3">
           <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Diagnoses</h3>

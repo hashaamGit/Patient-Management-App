@@ -6,18 +6,45 @@ import {
   Activity, Search, LogOut, Moon, Sun, Shield, Pill, Building2, Users
 } from 'lucide-react';
 
-const NAV_ITEMS = [
-  { path: '/workspace', label: 'Clinical Workspace', icon: Stethoscope, shortcut: '⌘1' },
-  { path: '/patients', label: 'Patients Directory', icon: Users, shortcut: '⌘8' },
-  { path: '/dashboard', label: 'Insights Analytics', icon: LayoutDashboard, shortcut: '⌘2' },
-  { path: '/admin', label: 'Admin Console', icon: Shield, shortcut: '⌘A' },
-  { path: '/pharmacy', label: 'Pharmacy Dispensary', icon: Pill, shortcut: '⌘P' },
-  { path: '/inventory', label: 'Store Inventory', icon: Building2, shortcut: '⌘I' },
-  { path: '/vitals', label: 'Vitals & Triage', icon: Activity, shortcut: '⌘3' },
-  { path: '/labs', label: 'Laboratory', icon: FlaskConical, shortcut: '⌘4' },
-  { path: '/notes', label: 'SOAP Notes', icon: FileText, shortcut: '⌘5' },
-  { path: '/orders', label: 'Orders', icon: ClipboardList, shortcut: '⌘6' },
-  { path: '/history', label: 'Patient History', icon: History, shortcut: '⌘7' },
+interface NavItem {
+  path: string;
+  label: string;
+  icon: any;
+  shortcut: string;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+const ALL_SECTIONS: NavSection[] = [
+  {
+    title: 'Clinical & Patient History',
+    items: [
+      { path: '/workspace', label: 'Clinical Workspace', icon: Stethoscope, shortcut: '⌘1' },
+      { path: '/patients', label: 'Patients Directory', icon: Users, shortcut: '⌘8' },
+      { path: '/history', label: 'Patient History', icon: History, shortcut: '⌘7' },
+      { path: '/notes', label: 'SOAP Notes', icon: FileText, shortcut: '⌘5' },
+      { path: '/vitals', label: 'Vitals & Triage', icon: Activity, shortcut: '⌘3' },
+      { path: '/labs', label: 'Laboratory', icon: FlaskConical, shortcut: '⌘4' },
+      { path: '/orders', label: 'Orders', icon: ClipboardList, shortcut: '⌘6' },
+    ]
+  },
+  {
+    title: 'Pharmacy & Store',
+    items: [
+      { path: '/pharmacy', label: 'Pharmacy Dispensary', icon: Pill, shortcut: '⌘P' },
+      { path: '/inventory', label: 'Store Inventory', icon: Building2, shortcut: '⌘I' },
+    ]
+  },
+  {
+    title: 'Operations & Insights',
+    items: [
+      { path: '/dashboard', label: 'Insights Analytics', icon: LayoutDashboard, shortcut: '⌘2' },
+      { path: '/admin', label: 'Admin Console', icon: Shield, shortcut: '⌘A' },
+    ]
+  }
 ];
 
 export const NavigationSidebar = () => {
@@ -25,25 +52,37 @@ export const NavigationSidebar = () => {
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar, clearSession, setCommandPaletteOpen, darkMode, toggleDarkMode, currentUser, logout } = useAppStore();
 
-  const getFilteredNavItems = () => {
+  const getFilteredSections = () => {
     if (!currentUser) return [];
+    
+    let allowedPaths: string[] = [];
     switch (currentUser.role) {
       case 'Doctor':
-        return NAV_ITEMS.filter(i => ['/workspace', '/patients', '/dashboard', '/vitals', '/labs', '/notes', '/orders', '/history', '/pharmacy'].includes(i.path));
+        allowedPaths = ['/workspace', '/patients', '/history', '/notes', '/vitals', '/labs', '/orders', '/pharmacy', '/dashboard'];
+        break;
       case 'Nurse':
-        return NAV_ITEMS.filter(i => ['/vitals', '/patients', '/dashboard', '/orders', '/history'].includes(i.path));
+        allowedPaths = ['/vitals', '/patients', '/history', '/orders', '/dashboard'];
+        break;
       case 'Pharmacist':
-        return NAV_ITEMS.filter(i => ['/pharmacy', '/dashboard', '/inventory', '/orders'].includes(i.path));
+        allowedPaths = ['/pharmacy', '/inventory', '/dashboard', '/orders'];
+        break;
       case 'Storekeeper':
-        return NAV_ITEMS.filter(i => ['/inventory', '/dashboard'].includes(i.path));
+        allowedPaths = ['/inventory', '/dashboard'];
+        break;
       case 'Admin':
-        return NAV_ITEMS.filter(i => ['/admin', '/patients', '/dashboard', '/workspace', '/inventory', '/pharmacy'].includes(i.path));
+        allowedPaths = ['/admin', '/patients', '/history', '/dashboard', '/workspace', '/inventory', '/pharmacy'];
+        break;
       default:
-        return [];
+        allowedPaths = [];
     }
+
+    return ALL_SECTIONS.map(section => ({
+      ...section,
+      items: section.items.filter(item => allowedPaths.includes(item.path))
+    })).filter(section => section.items.length > 0);
   };
 
-  const filteredNavItems = getFilteredNavItems();
+  const filteredSections = getFilteredSections();
 
   return (
     <aside
@@ -83,31 +122,37 @@ export const NavigationSidebar = () => {
         </button>
       </div>
 
-      {/* Navigation Items */}
-      <nav className="flex-1 px-2.5 py-3 space-y-0.5 overflow-y-auto">
-        {!sidebarCollapsed && (
-          <div className="section-header px-3 pt-1 pb-2 text-[#64748B]">Clinical</div>
-        )}
-        {filteredNavItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.path}
-              onClick={() => navigate(item.path)}
-              className={`nav-item w-full ${isActive ? 'active' : ''} ${sidebarCollapsed ? 'justify-center px-0 mx-0' : ''}`}
-              title={sidebarCollapsed ? `${item.label} (${item.shortcut})` : undefined}
-            >
-              <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-              {!sidebarCollapsed && (
-                <>
-                  <span className="flex-1 text-left truncate">{item.label}</span>
-                  <span className="text-[10px] text-[#475569] opacity-0 group-hover:opacity-100">{item.shortcut}</span>
-                </>
-              )}
-            </button>
-          );
-        })}
+      {/* Navigation Items Grouped */}
+      <nav className="flex-1 px-2.5 py-2 space-y-4 overflow-y-auto">
+        {filteredSections.map((section, sIdx) => (
+          <div key={sIdx} className="space-y-1">
+            {!sidebarCollapsed && (
+              <div className="section-header px-3 pt-1 pb-1 text-[11px] font-bold uppercase tracking-wider text-[#64748B]">
+                {section.title}
+              </div>
+            )}
+            {section.items.map((item) => {
+              const isActive = location.pathname === item.path;
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  className={`nav-item w-full ${isActive ? 'active' : ''} ${sidebarCollapsed ? 'justify-center px-0 mx-0' : ''}`}
+                  title={sidebarCollapsed ? `${item.label} (${item.shortcut})` : undefined}
+                >
+                  <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                  {!sidebarCollapsed && (
+                    <>
+                      <span className="flex-1 text-left truncate">{item.label}</span>
+                      <span className="text-[10px] text-[#475569] opacity-0 group-hover:opacity-100">{item.shortcut}</span>
+                    </>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Bottom Actions */}
