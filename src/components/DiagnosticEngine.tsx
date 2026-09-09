@@ -831,7 +831,7 @@ export const DiagnosticEngine: React.FC = () => {
             </button>
 
             {isExpanded && (
-              <div className="p-3 flex flex-wrap gap-1.5 border-t border-border bg-surface max-h-72 overflow-y-auto">
+              <div className="p-4 flex flex-wrap gap-2.5 border-t border-border bg-surface max-h-80 overflow-y-auto">
                 {list.map(symptom => {
                   const hasTree = !!getTreeKeyForSymptom(symptom);
                   const isSelected = selectedSymptoms.includes(symptom);
@@ -839,28 +839,28 @@ export const DiagnosticEngine: React.FC = () => {
                   return (
                     <div
                       key={symptom}
-                      className={`inline-flex items-center rounded-md text-xs font-medium border transition-all ${
+                      className={`inline-flex items-center rounded-xl text-xs font-semibold border transition-all duration-150 shadow-2xs ${
                         isSelected
                           ? 'bg-primary text-white border-primary shadow-xs'
                           : hasTree
-                          ? 'bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 border-teal-500/30'
-                          : 'bg-canvas hover:bg-surface border-border text-text-secondary hover:text-text-primary'
+                          ? 'bg-primary/10 hover:bg-primary/20 text-primary border-primary/30'
+                          : 'bg-canvas hover:bg-surface border-border text-text-primary hover:border-primary/50'
                       }`}
                     >
                       <button
                         onClick={() => toggleSymptomSelect(symptom)}
-                        className="px-2 py-1 flex items-center hover:bg-black/10 rounded-l-md border-r border-border/40 text-[10px]"
+                        className="px-2.5 py-1.5 flex items-center hover:bg-black/10 rounded-l-xl border-r border-border/40 text-[11px]"
                         title={isSelected ? 'Remove from selection' : 'Select for combined pathway'}
                       >
-                        {isSelected ? <Check size={11} className="stroke-[3]" /> : <Plus size={11} />}
+                        {isSelected ? <Check size={12} className="stroke-[3]" /> : <Plus size={12} />}
                       </button>
                       <button
                         onClick={() => handleStartTree(symptom)}
-                        className="px-2 py-1 flex items-center gap-1.5"
+                        className="px-3 py-1.5 flex items-center gap-2"
                         title={hasTree ? 'Launch Interactive Decision Tree' : 'View Clinical Protocol & Regimen'}
                       >
-                        <span>{symptom}</span>
-                        {hasTree && <ArrowRight size={10} className={isSelected ? 'text-white' : 'text-teal-600'} />}
+                        <span className="font-semibold">{symptom}</span>
+                        {hasTree && <ArrowRight size={11} className={isSelected ? 'text-white' : 'text-primary'} />}
                       </button>
                     </div>
                   );
@@ -903,7 +903,7 @@ export const DiagnosticEngine: React.FC = () => {
             </button>
 
             {isExpanded && (
-              <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2 border-t border-border bg-surface max-h-80 overflow-y-auto">
+              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-border bg-surface max-h-96 overflow-y-auto">
                 {list.map((disease, idx) => {
                   const icd = getIcdCode(disease, idx);
                   const isSelected = selectedDiseases.includes(disease);
@@ -911,28 +911,28 @@ export const DiagnosticEngine: React.FC = () => {
                   return (
                     <div
                       key={disease}
-                      className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 transition-colors ${
+                      className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 transition-all duration-150 card-interactive ${
                         isSelected
-                          ? 'bg-blue-500/10 border-blue-500/40 shadow-xs'
-                          : 'bg-canvas border border-border hover:border-primary/40'
+                          ? 'bg-primary/10 border-primary shadow-xs'
+                          : 'bg-canvas border-border hover:border-primary/50'
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-semibold text-xs text-text-primary truncate">{disease}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="font-mono text-[10px] text-text-muted bg-surface px-1 rounded border border-border">
+                        <div className="font-bold text-xs text-text-primary truncate">{disease}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="font-mono text-[10px] text-text-muted bg-surface px-1.5 py-0.5 rounded border border-border">
                             ICD: {icd}
                           </span>
-                          <span className="text-[10px] text-text-faint">{specialty}</span>
+                          <span className="text-[10px] text-text-muted font-medium">{specialty}</span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           onClick={() => toggleDiseaseSelect(disease)}
-                          className={`px-2 py-1 rounded text-[10px] font-bold transition-colors ${
+                          className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-colors ${
                             isSelected
-                              ? 'bg-blue-600 text-white'
+                              ? 'bg-primary text-white'
                               : 'bg-surface hover:bg-canvas text-text-secondary border border-border'
                           }`}
                           title={isSelected ? 'Remove from synthesis selection' : 'Select for combined synthesis'}
@@ -945,14 +945,14 @@ export const DiagnosticEngine: React.FC = () => {
                             setTransferToast(`Added ${disease} to Diagnosis!`);
                             setTimeout(() => setTransferToast(null), 3000);
                           }}
-                          className="px-2 py-1 rounded bg-surface hover:bg-primary text-text-secondary hover:text-white border border-border text-[10px] font-semibold transition-colors"
+                          className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-primary text-text-secondary hover:text-white border border-border text-[10px] font-semibold transition-colors"
                           title="Add diagnosis to Rx pad"
                         >
                           + Diag
                         </button>
                         <button
                           onClick={() => handleApplyDiseaseRegimen(disease, idx)}
-                          className="px-2 py-1 rounded bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 text-[10px] font-bold transition-colors"
+                          className="px-2.5 py-1.5 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 text-[10px] font-bold transition-colors"
                           title="Apply standard medical regimen & labs"
                         >
                           Regimen →

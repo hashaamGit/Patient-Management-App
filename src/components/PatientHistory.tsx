@@ -45,24 +45,24 @@ export const PatientHistory = () => {
           <div className="lg:col-span-7 space-y-6">
             
             {/* Past Medical History */}
-            <div className="card p-4">
-              <h3 className="flex items-center gap-2 font-bold text-gray-900 mb-4">
-                <Heart className="w-4 h-4 text-danger" /> Past Medical History
+            <div className="card p-5 rounded-2xl shadow-xs space-y-4">
+              <h3 className="flex items-center gap-2 font-bold text-text-primary text-base">
+                <Heart className="w-5 h-5 text-danger" /> Past Medical History
               </h3>
               
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-2">
                 {pmhQuickAdds.map(q => (
                   <button
                     key={q}
                     onClick={() => !patientHistory.pastMedical.includes(q) && updatePatientHistory({ pastMedical: [...patientHistory.pastMedical, q] })}
-                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-xs rounded-full text-text-secondary transition-colors"
+                    className="px-2.5 py-1 bg-canvas hover:bg-surface border border-border text-xs rounded-lg font-medium text-text-primary transition-colors"
                   >
                     + {q}
                   </button>
                 ))}
               </div>
 
-              <div className="flex gap-2 mb-4">
+              <div className="flex gap-2">
                 <input
                   type="text"
                   value={newPmH}
@@ -73,8 +73,8 @@ export const PatientHistory = () => {
                        setNewPmH('');
                     }
                   }}
-                  className="flex-1 p-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  placeholder="Add other condition..."
+                  className="flex-1 p-2.5 text-sm bg-canvas border border-border rounded-xl focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary text-text-primary"
+                  placeholder="Add other medical condition..."
                 />
                 <button 
                   onClick={() => {
@@ -83,35 +83,35 @@ export const PatientHistory = () => {
                        setNewPmH('');
                     }
                   }}
-                  className="px-3 bg-primary text-white hover:bg-primary/90 rounded-md text-sm font-medium"
+                  className="px-4 bg-primary text-white hover:bg-primary/90 rounded-xl text-sm font-bold transition-all shadow-xs"
                 >
                   <Plus className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 pt-1">
                 {patientHistory.pastMedical.map((pmh, i) => (
-                  <div key={i} className="flex items-center gap-1 px-3 py-1 bg-danger-bg text-danger-text rounded-full text-sm">
+                  <div key={i} className="flex items-center gap-1.5 px-3 py-1 bg-danger-bg text-danger-text border border-danger-border rounded-lg text-xs font-semibold">
                     {pmh}
-                    <button onClick={() => updatePatientHistory({ pastMedical: patientHistory.pastMedical.filter((_, idx) => idx !== i) })} className="hover:text-red-800"><X className="w-3 h-3" /></button>
+                    <button onClick={() => updatePatientHistory({ pastMedical: patientHistory.pastMedical.filter((_, idx) => idx !== i) })} className="hover:opacity-75"><X className="w-3.5 h-3.5" /></button>
                   </div>
                 ))}
-                {patientHistory.pastMedical.length === 0 && <span className="text-sm text-text-muted italic">No past medical history recorded.</span>}
+                {patientHistory.pastMedical.length === 0 && <span className="text-xs text-text-muted italic">No past medical history recorded.</span>}
               </div>
             </div>
 
             {/* Past Surgical History */}
-            <div className="card p-4">
-              <h3 className="flex items-center gap-2 font-bold text-gray-900 mb-4">
-                <Stethoscope className="w-4 h-4 text-blue-600" /> Past Surgical History
+            <div className="card p-5 rounded-2xl shadow-xs space-y-4">
+              <h3 className="flex items-center gap-2 font-bold text-text-primary text-base">
+                <Stethoscope className="w-5 h-5 text-blue-600" /> Past Surgical History
               </h3>
               
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-2">
                 {surgQuickAdds.map(q => (
                   <button
                     key={q}
                     onClick={() => setSurgProc(q)}
-                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-xs rounded-full text-text-secondary transition-colors"
+                    className="px-2.5 py-1 bg-canvas hover:bg-surface border border-border text-xs rounded-lg font-medium text-text-primary transition-colors"
                   >
                     {q}
                   </button>

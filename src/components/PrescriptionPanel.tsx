@@ -7,7 +7,7 @@ import {
   Edit2, Save, Printer, Trash2, Plus, AlertTriangle, ShieldAlert,
   ChevronDown, ChevronUp, Pill, Star, X, Calculator, Info,
   FileText, Clock, CheckCircle2, OctagonAlert, DollarSign, Globe,
-  Sparkles, ShieldCheck, Heart, Activity
+  Sparkles, ShieldCheck, Heart, Activity, PanelRightClose
 } from 'lucide-react';
 import { generateContextualTreatmentRecommendations } from '../utils/clinicalContextReasoning';
 
@@ -53,7 +53,11 @@ export const getUrduTiming = (instructions?: string, frequency?: string) => {
   return parts.join(' • ');
 };
 
-export const PrescriptionPanel = () => {
+export interface PrescriptionPanelProps {
+  onMinimize?: () => void;
+}
+
+export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize }) => {
   const {
     patient,
     patientHistory,
@@ -313,6 +317,16 @@ export const PrescriptionPanel = () => {
           <button onClick={resetPrescription} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-surface border border-danger text-danger rounded-lg hover:bg-danger-bg transition-colors">
             <Trash2 className="w-3.5 h-3.5" /> Clear
           </button>
+          {onMinimize && (
+            <button
+              onClick={onMinimize}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-surface border border-border text-text-secondary hover:text-text-primary rounded-lg hover:bg-canvas transition-colors shadow-2xs"
+              title="Minimize Rx Pad (Expand Clinical View)"
+            >
+              <PanelRightClose className="w-3.5 h-3.5 text-text-muted" />
+              <span className="hidden xl:inline">Minimize</span>
+            </button>
+          )}
         </div>
       </div>
 

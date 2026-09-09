@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { NavigationSidebar } from './NavigationSidebar';
 import { PatientContextBar } from './PatientContextBar';
@@ -20,7 +20,15 @@ import { PatientsDirectory } from './PatientsDirectory';
 import { useAppStore } from '../store/useAppStore';
 
 export const AppShell = () => {
-  const { sidebarCollapsed, commandPaletteOpen, setCommandPaletteOpen, currentUser } = useAppStore();
+  const location = useLocation();
+  const {
+    commandPaletteOpen,
+    setCommandPaletteOpen,
+    currentUser,
+    themeAccent,
+    uiDensity,
+    fontSizeScale
+  } = useAppStore();
   const [showLogin, setShowLogin] = useState(false);
 
   // Global keyboard shortcuts
@@ -58,15 +66,31 @@ export const AppShell = () => {
     }
   };
 
+  // Only render patient context bar on clinical patient-specific routes
+  const isClinicalPatientView = [
+    '/workspace',
+    '/patients',
+    '/history',
+    '/notes',
+    '/vitals',
+    '/labs',
+    '/orders'
+  ].some(p => location.pathname.startsWith(p));
+
   return (
-    <div className="h-screen w-full flex overflow-hidden bg-canvas font-sans">
+    <div 
+      data-theme={themeAccent || 'teal'}
+      data-density={uiDensity || 'comfortable'}
+      data-font={fontSizeScale || 'normal'}
+      className="h-screen w-full flex overflow-hidden bg-canvas font-sans transition-colors duration-200"
+    >
       {/* Left Sidebar Navigation */}
       <NavigationSidebar />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Patient Context Bar — visible for clinical roles */}
-        <PatientContextBar />
+        {/* Patient Context Bar — cleanly scoped to clinical care routes */}
+        {isClinicalPatientView && <PatientContextBar />}
 
         {/* Route Content */}
         <main className="flex-1 overflow-hidden">

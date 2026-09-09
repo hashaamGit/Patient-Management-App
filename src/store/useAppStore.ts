@@ -344,6 +344,27 @@ interface AppState {
   // Custom Templates
   customTemplates: any[];
 
+  // Customizations & Layout
+  prescriptionCollapsed: boolean;
+  togglePrescriptionCollapsed: () => void;
+  setPrescriptionCollapsed: (collapsed: boolean) => void;
+
+  uiDensity: 'comfortable' | 'spacious' | 'compact';
+  setUiDensity: (density: 'comfortable' | 'spacious' | 'compact') => void;
+
+  themeAccent: 'teal' | 'blue' | 'indigo' | 'rose' | 'slate';
+  setThemeAccent: (accent: 'teal' | 'blue' | 'indigo' | 'rose' | 'slate') => void;
+
+  fontSizeScale: 'normal' | 'large';
+  setFontSizeScale: (scale: 'normal' | 'large') => void;
+
+  soundAlerts: boolean;
+  toggleSoundAlerts: () => void;
+
+  // Role Profiles
+  roleProfiles: Record<string, any>;
+  updateRoleProfile: (role: string, updates: any) => void;
+
   // Command Palette
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (open: boolean) => void;
@@ -361,6 +382,56 @@ if (typeof window !== 'undefined' && !localStorage.getItem('hassanco-storage') &
     // ignore
   }
 }
+
+// Role Profiles initial defaults
+const initialRoleProfiles: Record<string, any> = {
+  Doctor: {
+    fullName: 'Dr. Hassan Aqeel',
+    credentials: 'MBBS, FCPS (Internal Medicine), MRCP (UK)',
+    registrationNo: 'PMDC-54321-M',
+    specialty: 'Internal Medicine & Critical Care',
+    department: 'General Medicine & ICU',
+    clinicName: 'Hassan and Co. Healthcare Medical Complex',
+    clinicAddress: 'Executive Medical Wing, Floor 3, Blue Area, Islamabad',
+    phone: '+92 51 2233445',
+    digitalSignature: 'Dr. Hassan Aqeel (Consultant Physician)',
+    defaultRxLanguage: 'both',
+  },
+  Nurse: {
+    fullName: 'Nurse Sarah Jenkins',
+    councilId: 'PNC-98765-RN',
+    assignedWard: 'Medical Ward A & Step-Down ICU',
+    shift: 'Morning (08:00 - 16:00)',
+    vitalsIntervalMinutes: '60',
+    news2AudioChime: true,
+    emergencyContact: '+92 300 7788990',
+  },
+  Pharmacist: {
+    fullName: 'Pharm. Ahmed Raza',
+    licenseNo: 'PHARM-88219-R',
+    counterNo: 'Dispensary Counter 1 (OPD/Emergency)',
+    lowStockThreshold: 50,
+    autoPrintReceipt: true,
+    genericSubstitutionPrompt: true,
+    shift: 'General Daytime',
+  },
+  Storekeeper: {
+    fullName: 'Bilal Khan (Storekeeper)',
+    employeeBadge: 'EMP-SK-4412',
+    warehouseZone: 'Central Medical Supplies & Equipment Depot, Basement 2',
+    reorderThreshold: 100,
+    maintenanceAlertInterval: '30 Days',
+    equipmentInspectionDue: 'Bi-Weekly',
+  },
+  Admin: {
+    fullName: 'System Administrator',
+    organizationName: 'Hassan and Co. Healthcare Systems',
+    securityClearance: 'Level 5 (Super Admin)',
+    auditLogLevel: 'Verbose (All Clinical & Inventory Operations)',
+    autoBackupFrequency: 'Daily at 00:00 UTC',
+    dataRetentionDays: 365,
+  }
+};
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -701,6 +772,32 @@ export const useAppStore = create<AppState>()(
       // ---- Custom Templates ----
       customTemplates: [],
 
+      // ---- Customizations & Layout ----
+      prescriptionCollapsed: false,
+      togglePrescriptionCollapsed: () => set((s) => ({ prescriptionCollapsed: !s.prescriptionCollapsed })),
+      setPrescriptionCollapsed: (collapsed) => set({ prescriptionCollapsed: collapsed }),
+
+      uiDensity: 'comfortable',
+      setUiDensity: (density) => set({ uiDensity: density }),
+
+      themeAccent: 'teal',
+      setThemeAccent: (accent) => set({ themeAccent: accent }),
+
+      fontSizeScale: 'normal',
+      setFontSizeScale: (scale) => set({ fontSizeScale: scale }),
+
+      soundAlerts: true,
+      toggleSoundAlerts: () => set((s) => ({ soundAlerts: !s.soundAlerts })),
+
+      roleProfiles: initialRoleProfiles,
+      updateRoleProfile: (role, updates) =>
+        set((s) => ({
+          roleProfiles: {
+            ...s.roleProfiles,
+            [role]: { ...(s.roleProfiles[role] || {}), ...updates },
+          },
+        })),
+
       // ---- Command Palette ----
       commandPaletteOpen: false,
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
@@ -730,6 +827,12 @@ export const useAppStore = create<AppState>()(
         patientsList: state.patientsList,
         clinicalNotes: state.clinicalNotes,
         prescriptionLanguage: state.prescriptionLanguage,
+        prescriptionCollapsed: state.prescriptionCollapsed,
+        uiDensity: state.uiDensity,
+        themeAccent: state.themeAccent,
+        fontSizeScale: state.fontSizeScale,
+        soundAlerts: state.soundAlerts,
+        roleProfiles: state.roleProfiles,
       }),
     }
   )
