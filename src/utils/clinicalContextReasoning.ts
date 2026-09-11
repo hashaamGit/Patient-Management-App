@@ -354,8 +354,12 @@ export function generateAdaptiveClinicalQuestions(input: ClinicalContextInput): 
   const hasDM = pHistory.some(h => h.includes('diabet') || h.includes('dm') || h.includes('sugar'));
   const hasIHD = pHistory.some(h => h.includes('ihd') || h.includes('cad') || h.includes('heart') || h.includes('angina') || h.includes('stent'));
   const hasAsthma = pHistory.some(h => h.includes('asthma') || h.includes('copd') || h.includes('bronch'));
-  const hasCKD = pHistory.some(h => h.includes('ckd') || h.includes('renal') || h.includes('kidney'));
-  const hasPUD = pHistory.some(h => h.includes('ulcer') || h.includes('gerd') || h.includes('gastrit') || h.includes('pud'));
+  const ageNum = parseInt(patient.age || '0', 10);
+  const isPediatric = (patient.age && (patient.age.includes('m') || patient.age.includes('mo') || ageNum < 12)) || (parseFloat(patient.weight || '70') < 35);
+  const isGeriatric = ageNum >= 65;
+  const hasHistory = (kw: string) => pHistory.some(h => h.includes(norm(kw)));
+  const hasCKD = hasHistory('ckd') || hasHistory('renal') || hasHistory('kidney');
+  const hasPUD = hasHistory('ulcer') || hasHistory('gerd') || hasHistory('gastrit') || hasHistory('pud');
 
   const hasSymptom = (term: string) => sList.some(s => s.includes(norm(term))) || notes.includes(norm(term));
 
@@ -521,6 +525,105 @@ export function generateAdaptiveClinicalQuestions(input: ClinicalContextInput): 
         { label: 'Severe colicky flank pain radiating to groin with microscopic hematuria (Renal Colic)', value: 'renal_colic', clinicalImpact: 'Non-contrast CT KUB, Ketorolac/Diclofenac (if renal safe) + hydration' }
       ],
       relevantFactors: ['Urinary Complaints', `CKD Status: ${hasCKD ? 'History of CKD' : 'None'}`]
+    });
+  }
+
+  // 7. HYPERTENSION & CARDIOVASCULAR ADAPTIVE INQUIRIES
+  if (isHTN || isSevereHTN || hasHistory('hypertens') || hasSymptom('high bp') || hasSymptom('blood pressure')) {
+    questions.push({
+      id: 'q_htn_management',
+      question: `With blood pressure recorded at ${patient.bp || 'Elevated'}, how compliant is the patient with antihypertensive therapy, and are there signs of volume overload?`,
+      category: 'Vitals Alert',
+      rationale: 'Clarifies whether elevated blood pressure is due to medication non-adherence vs true refractory hypertension.',
+      options: [
+        { label: 'Non-compliant or missed recent doses / High dietary salt', value: 'medication_noncompliance', clinicalImpact: 'Counsel on adherence; resume baseline regimen before escalating doses' },
+        { label: 'Fully compliant with multiple anti-hypertensives (Refractory/Resistant)', value: 'resistant_hypertension', clinicalImpact: 'Requires adding secondary line agent (Spironolactone / CCB) & renal artery screening' },
+        { label: 'New onset hypertension with bilateral pedal edema', value: 'new_htn_volume_overload', clinicalImpact: 'Order Renal Function Tests, Electrolytes, and low-dose diuretic' }
+      ],
+      relevantFactors: [`BP: ${patient.bp || 'Elevated'} mmHg`, 'Hypertension Assessment'],
+      isUrgent: isSevereHTN
+    });
+  }
+
+  // 8. DIABETES & METABOLIC INQUIRIES
+  if (hasDM || hasSymptom('sugar') || hasSymptom('thirst') || hasSymptom('polyuria') || hasSymptom('diabet')) {
+    questions.push({
+      id: 'q_dm_microvascular',
+      question: 'Does the patient have burning numbness in the soles (peripheral neuropathy) or any non-healing sores on the feet?',
+      category: 'History Correlate',
+      rationale: 'Diabetic peripheral neuropathy and vascular disease dictate foot examination and strict glycemic titration.',
+      options: [
+        { label: 'Yes — Burning paresthesias in feet / Decreased sensation', value: 'diabetic_neuropathy', clinicalImpact: 'Add Pregabalin / Gabapentin for neuropathic pain; mandatory foot ulcer check' },
+        { label: 'No neuropathic symptoms; routine glycemic maintenance', value: 'uncomplicated_diabetes', clinicalImpact: 'Continue oral hypoglycemics; check HbA1c and microalbuminuria' },
+        { label: 'Active non-healing ulcer or skin breakdown on foot', value: 'diabetic_foot_ulcer', clinicalImpact: 'Urgent wound debridement evaluation, broad-spectrum antibiotics, off-loading' }
+      ],
+      relevantFactors: ['Diabetes Mellitus History', 'Metabolic Screening']
+    });
+  }
+
+  // 9. MUSCULOSKELETAL & JOINT PAIN INQUIRIES
+  if (hasSymptom('joint') || hasSymptom('arthrit') || hasSymptom('back pain') || hasSymptom('knee') || hasSymptom('neck pain')) {
+    questions.push({
+      id: 'q_msk_character',
+      question: 'Does joint stiffness last longer than 30-60 minutes in the morning, or is it worse with movement?',
+      category: 'Symptom Characterization',
+      rationale: 'Differentiates systemic inflammatory arthritis (Rheumatoid / Spondyloarthritis) from mechanical / degenerative wear (Osteoarthritis).',
+      options: [
+        { label: 'Prolonged morning stiffness (> 45 min) improved with activity (Inflammatory / RA)', value: 'inflammatory_arthritis', clinicalImpact: 'Order ESR, CRP, Rheumatoid Factor (RF), Anti-CCP; avoid prolonged NSAIDs without gastric cover' },
+        { label: 'Worse with bearing weight & activity, relieved by rest (Degenerative / OA)', value: 'osteoarthritis_mechanical', clinicalImpact: 'Paracetamol / Topical NSAID gel + physical therapy / weight management' },
+        { label: 'Severe lower back pain radiating down leg below the knee (Sciatica / Radiculopathy)', value: 'lumbar_radiculopathy', clinicalImpact: 'Neurological deficit check, straight leg raise test; MRI lumbar spine if red flags' }
+      ],
+      relevantFactors: ['Musculoskeletal Complaint']
+    });
+  }
+
+  // 10. DERMATOLOGY & ALLERGY / ANGIOEDEMA INQUIRIES
+  if (hasSymptom('rash') || hasSymptom('itch') || hasSymptom('hives') || hasSymptom('urticar') || hasSymptom('allergy')) {
+    questions.push({
+      id: 'q_allergy_airway',
+      question: 'Is the rash accompanied by facial/lip swelling, throat tightness, or shortness of breath?',
+      category: 'Red Flag Screening',
+      rationale: 'Immediately screens for systemic anaphylaxis requiring emergency intramuscular Epinephrine.',
+      options: [
+        { label: 'Yes — Facial swelling / Stridor / Dyspnea present (Anaphylaxis Red Flag)', value: 'anaphylaxis_crisis', clinicalImpact: 'STAT IM Epinephrine 0.5mg, IV Hydrocortisone, High-flow O2, Airway stabilization' },
+        { label: 'Cutaneous hives and pruritus only; normal airway and breathing', value: 'isolated_urticaria', clinicalImpact: 'Second-generation non-sedating H1-antihistamine (Levocetirizine / Fexofenadine)' },
+        { label: 'Dry erythematous scaly eczema patches without acute swelling', value: 'eczematous_dermatitis', clinicalImpact: 'Topical emollient cream + short-course low-potency topical steroid' }
+      ],
+      relevantFactors: ['Allergy / Dermatology Presentation'],
+      isUrgent: true
+    });
+  }
+
+  // 11. PEDIATRIC SPECIFIC INQUIRIES
+  if (isPediatric) {
+    questions.push({
+      id: 'q_pediatric_hydration',
+      question: 'How is the child\'s fluid intake and wet diaper frequency over the past 12-24 hours?',
+      category: 'Vitals Alert',
+      rationale: 'Dehydration in pediatric patients progresses rapidly and dictates immediate oral vs intravenous rehydration.',
+      options: [
+        { label: 'Adequate — Drinking normally, producing 4+ wet diapers daily', value: 'euhydrated_pediatric', clinicalImpact: 'Continue oral fluids and maintenance supportive care' },
+        { label: 'Reduced — Sunken eyes, dry mouth, < 2 wet diapers (Moderate Dehydration)', value: 'moderate_dehydration', clinicalImpact: 'Oral Rehydration Salts (ORS) protocol (50-100 ml/kg over 4 hours)' },
+        { label: 'Lethargic, refusing all fluids, no urination > 8 hours (Severe Dehydration)', value: 'severe_dehydration', clinicalImpact: 'STAT IV Fluid resuscitation with 20 ml/kg Normal Saline bolus' }
+      ],
+      relevantFactors: [`Pediatric Age: ${patient.age || 'Child'}`, `Weight: ${patient.weight || 'Std'} kg`],
+      isUrgent: true
+    });
+  }
+
+  // 12. GERIATRIC SPECIFIC INQUIRIES
+  if (isGeriatric) {
+    questions.push({
+      id: 'q_geriatric_falls',
+      question: 'Has the patient experienced any unsteadiness, recent falls, or acute change in cognitive baseline?',
+      category: 'History Correlate',
+      rationale: 'Elderly patients with acute illness frequently present with delirium, fall risk, and atypical infections.',
+      options: [
+        { label: 'Stable baseline cognition and independent mobility', value: 'geriatric_stable', clinicalImpact: 'Standard adjusted dosing ("start low, go slow")' },
+        { label: 'Recent unsteadiness / fall within the past 2 weeks', value: 'fall_risk_present', clinicalImpact: 'Review sedative medications, orthostatic BP testing, gait assistance' },
+        { label: 'Acute onset confusion, disorientation, or drowsiness (Delirium)', value: 'geriatric_delirium', clinicalImpact: 'Screen for occult UTI, pneumonia, electrolyte derangements, or intracranial bleed' }
+      ],
+      relevantFactors: [`Geriatric Age: ${patient.age || '65+'}`, 'Frailty Assessment']
     });
   }
 

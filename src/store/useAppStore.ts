@@ -334,9 +334,9 @@ interface AppState {
   clinicalNotes: string;
   updateClinicalNotes: (notes: string) => void;
 
-  // Bilingual Prescription Settings
-  prescriptionLanguage: 'both' | 'english' | 'urdu';
-  setPrescriptionLanguage: (lang: 'both' | 'english' | 'urdu') => void;
+  // Prescription Language Settings (English or Urdu)
+  prescriptionLanguage: 'english' | 'urdu';
+  setPrescriptionLanguage: (lang: 'english' | 'urdu') => void;
 
   // Backup Import
   importBackupData: (data: any) => boolean;
@@ -721,8 +721,8 @@ export const useAppStore = create<AppState>()(
       clinicalNotes: '',
       updateClinicalNotes: (notes) => set({ clinicalNotes: notes }),
 
-      // ---- Bilingual Prescription Settings ----
-      prescriptionLanguage: 'both',
+      // ---- Prescription Language Settings ----
+      prescriptionLanguage: 'english',
       setPrescriptionLanguage: (lang) => set({ prescriptionLanguage: lang }),
 
       // ---- Backup Import ----

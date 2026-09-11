@@ -10,6 +10,14 @@ import {
   Sparkles, ShieldCheck, Heart, Activity, PanelRightClose
 } from 'lucide-react';
 import { generateContextualTreatmentRecommendations } from '../utils/clinicalContextReasoning';
+import {
+  translateDosageToUrdu,
+  translateDurationToUrdu,
+  translateInstructionsToUrdu,
+  translateAdviceToUrdu,
+  URDU_FORM_MAP,
+  URDU_SLIP_LABELS
+} from '../utils/urduTranslations';
 
 export const URDU_FREQUENCY_MAP: Record<string, { en: string; ur: string }> = {
   'OD': { en: 'Once daily', ur: 'دن میں ایک بار' },
@@ -272,26 +280,21 @@ export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize
             <h2 className="font-semibold text-text-primary">Live Rx Pad</h2>
           </div>
 
-          {/* Bilingual Language Switcher */}
+          {/* Prescription Language Switcher: English or Urdu */}
           <div className="flex items-center bg-canvas p-0.5 rounded-lg border border-border text-[11px] font-semibold">
             <button
-              onClick={() => setPrescriptionLanguage('both')}
-              className={`px-2 py-1 rounded transition-colors ${prescriptionLanguage === 'both' ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
-              title="Dual English and Urdu Instructions"
-            >
-              Eng + اردو
-            </button>
-            <button
               onClick={() => setPrescriptionLanguage('english')}
-              className={`px-2 py-1 rounded transition-colors ${prescriptionLanguage === 'english' ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
+              className={`px-2.5 py-1 rounded transition-colors ${prescriptionLanguage === 'english' ? 'bg-primary text-white font-bold shadow-xs' : 'text-text-muted hover:text-text-primary'}`}
+              title="Standard English Prescription"
             >
               English
             </button>
             <button
               onClick={() => setPrescriptionLanguage('urdu')}
-              className={`px-2 py-1 rounded transition-colors ${prescriptionLanguage === 'urdu' ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
+              className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${prescriptionLanguage === 'urdu' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'text-text-muted hover:text-text-primary'}`}
+              title="مکمل اردو نسخہ مع ہدایات و پرہیز"
             >
-              اردو
+              <span>اردو (Urdu)</span>
             </button>
           </div>
 
@@ -630,13 +633,21 @@ export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize
                         </div>
                       </div>
 
-                      {/* Bilingual Instructions / Urdu */}
-                      {(prescriptionLanguage === 'both' || prescriptionLanguage === 'urdu') && (
-                        <div className="mt-1.5 p-1.5 rounded bg-emerald-500/5 border border-emerald-500/15 flex items-center justify-between text-xs">
-                          <span className="text-[11px] font-bold text-emerald-700">طریقہ استعمال:</span>
-                          <span className="text-emerald-800 font-semibold" dir="rtl">
-                            {getUrduTiming(item.instructions, item.frequency)}
-                          </span>
+                      {/* Urdu Mode Translated Instructions */}
+                      {prescriptionLanguage === 'urdu' && (
+                        <div className="mt-1.5 p-2 rounded bg-emerald-500/10 border border-emerald-500/20 flex flex-col gap-1 text-xs" dir="rtl">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-emerald-800">طریقہ استعمال و خوراک:</span>
+                            <span className="text-[11px] font-extrabold text-emerald-900">
+                              {translateDosageToUrdu(item.dosage, item.form)} • {URDU_FREQUENCY_MAP[item.frequency]?.ur || item.frequency}
+                            </span>
+                          </div>
+                          <div className="text-emerald-950 font-medium text-[11px]">
+                            {translateInstructionsToUrdu(item.instructions, item.frequency)}
+                          </div>
+                          <div className="text-[10px] text-emerald-700 font-semibold">
+                            مدت: {translateDurationToUrdu(item.duration)}
+                          </div>
                         </div>
                       )}
 
@@ -890,7 +901,7 @@ export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize
                 <Printer className="w-5 h-5 text-primary" />
                 <h3 className="font-bold text-text-primary text-base">Hassan and Co. Official Bilingual Prescription Slip</h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                  {prescriptionLanguage === 'both' ? 'English + اردو' : prescriptionLanguage === 'urdu' ? 'اردو Only' : 'English Only'}
+                  {prescriptionLanguage === 'urdu' ? 'آفیشل اردو نسخہ (Urdu Slip)' : 'Official English Prescription'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -954,18 +965,16 @@ export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize
                 {/* Rx Symbol */}
                 <div className="text-3xl font-serif font-bold italic text-slate-900">℞</div>
 
-                {/* Medications Table with Urdu Translations */}
-                <table className="w-full text-left text-xs border-collapse">
+                {/* Medications Table (Fully translated in Urdu mode) */}
+                <table className="w-full text-left text-xs border-collapse" dir={prescriptionLanguage === 'urdu' ? 'rtl' : 'ltr'}>
                   <thead>
                     <tr className="border-b-2 border-slate-900 font-bold uppercase text-slate-800">
-                      <th className="py-1.5 pr-2 w-6">#</th>
-                      <th className="py-1.5 px-2">Drug Name</th>
-                      <th className="py-1.5 px-2">Dosage & Frequency</th>
-                      {(prescriptionLanguage === 'both' || prescriptionLanguage === 'urdu') && (
-                        <th className="py-1.5 px-2 text-right">طریقہ استعمال (Urdu Instructions)</th>
-                      )}
-                      <th className="py-1.5 px-2">Duration</th>
-                      <th className="py-1.5 pl-2 text-right">Est. Price</th>
+                      <th className="py-2 pr-2 w-6">#</th>
+                      <th className="py-2 px-2">{prescriptionLanguage === 'urdu' ? 'دوا کا نام و طاقت' : 'Medicine & Strength'}</th>
+                      <th className="py-2 px-2">{prescriptionLanguage === 'urdu' ? 'مقدار و اوقات' : 'Dosage & Frequency'}</th>
+                      <th className="py-2 px-2">{prescriptionLanguage === 'urdu' ? 'طریقہ استعمال و ضروری ہدایات' : 'Instructions'}</th>
+                      <th className="py-2 px-2">{prescriptionLanguage === 'urdu' ? 'مدت' : 'Duration'}</th>
+                      <th className="py-2 pl-2 text-right">{prescriptionLanguage === 'urdu' ? 'قیمت' : 'Est. Price'}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -976,18 +985,26 @@ export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize
                           <td className="py-2.5 pr-2 font-bold text-slate-500">{idx + 1}</td>
                           <td className="py-2.5 px-2">
                             <div className="font-bold text-black">{item.brandName || item.genericName}</div>
-                            <div className="text-[10px] text-teal-700 font-semibold">{item.strength} • {item.form}</div>
+                            <div className="text-[10px] text-teal-800 font-semibold">
+                              {item.strength} • {prescriptionLanguage === 'urdu' ? (URDU_FORM_MAP[item.form] || item.form) : item.form}
+                            </div>
                           </td>
                           <td className="py-2.5 px-2">
-                            <span className="font-bold text-black">{item.dosage}</span>
-                            <div className="text-[10px] text-slate-500">{item.frequency} • {item.route}</div>
+                            <span className="font-bold text-black">
+                              {prescriptionLanguage === 'urdu' ? translateDosageToUrdu(item.dosage, item.form) : item.dosage}
+                            </span>
+                            <div className="text-[10px] text-slate-600">
+                              {prescriptionLanguage === 'urdu' ? (URDU_FREQUENCY_MAP[item.frequency]?.ur || item.frequency) : `${item.frequency} • ${item.route}`}
+                            </div>
                           </td>
-                          {(prescriptionLanguage === 'both' || prescriptionLanguage === 'urdu') && (
-                            <td className="py-2.5 px-2 text-right font-medium text-emerald-900" dir="rtl">
-                              {getUrduTiming(item.instructions, item.frequency)}
-                            </td>
-                          )}
-                          <td className="py-2.5 px-2 text-slate-700 font-medium">{item.duration}</td>
+                          <td className="py-2.5 px-2 font-medium text-emerald-950">
+                            {prescriptionLanguage === 'urdu' 
+                              ? translateInstructionsToUrdu(item.instructions, item.frequency)
+                              : (item.instructions || 'As directed')}
+                          </td>
+                          <td className="py-2.5 px-2 text-slate-800 font-medium">
+                            {prescriptionLanguage === 'urdu' ? translateDurationToUrdu(item.duration) : item.duration}
+                          </td>
                           <td className="py-2.5 pl-2 text-right font-semibold text-slate-800">
                             {itemPrice ? `₨ ${itemPrice}` : '—'}
                           </td>
@@ -996,17 +1013,19 @@ export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize
                     })}
                     {prescription.items.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-4 text-center text-slate-400 italic">No medications recorded.</td>
+                        <td colSpan={6} className="py-4 text-center text-slate-400 italic">
+                          {prescriptionLanguage === 'urdu' ? 'کوئی دوا درج نہیں کی گئی۔' : 'No medications recorded.'}
+                        </td>
                       </tr>
                     )}
                   </tbody>
                   {totalEstimatedPrice > 0 && (
                     <tfoot>
                       <tr className="border-t-2 border-slate-900 text-xs font-bold">
-                        <td colSpan={prescriptionLanguage === 'english' ? 4 : 5} className="py-2 text-right text-slate-700 uppercase">
-                          Estimated Total Pharmacy Cost:
+                        <td colSpan={5} className="py-2 text-right text-slate-700 uppercase">
+                          {prescriptionLanguage === 'urdu' ? 'کل متوقع میڈیکل اسٹور بل:' : 'Estimated Total Pharmacy Cost:'}
                         </td>
-                        <td className="py-2 pl-2 text-right text-emerald-700 text-sm">
+                        <td className="py-2 pl-2 text-right text-emerald-700 text-sm font-bold">
                           ₨ {totalEstimatedPrice.toLocaleString()}
                         </td>
                       </tr>
@@ -1107,19 +1126,17 @@ export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize
         {/* Rx Symbol */}
         <div className="text-4xl font-serif font-bold italic text-slate-900 mb-3">℞</div>
 
-        {/* Medications Table with Urdu Instructions */}
+        {/* Medications Table (Fully translated in Urdu mode when printing) */}
         <div className="mb-6">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse" dir={prescriptionLanguage === 'urdu' ? 'rtl' : 'ltr'}>
             <thead>
               <tr className="border-b-2 border-slate-900 text-xs font-bold uppercase text-slate-800">
                 <th className="py-2 pr-2 w-8">#</th>
-                <th className="py-2 px-2">Medication & Strength</th>
-                <th className="py-2 px-2">Dosage & Timing</th>
-                {(prescriptionLanguage === 'both' || prescriptionLanguage === 'urdu') && (
-                  <th className="py-2 px-2 text-right">ہدایات برائے مریض (Urdu Instructions)</th>
-                )}
-                <th className="py-2 px-2">Duration</th>
-                <th className="py-2 pl-2 text-right">Est. Price</th>
+                <th className="py-2 px-2">{prescriptionLanguage === 'urdu' ? 'دوا کا نام و طاقت' : 'Medication & Strength'}</th>
+                <th className="py-2 px-2">{prescriptionLanguage === 'urdu' ? 'مقدار و اوقات' : 'Dosage & Timing'}</th>
+                <th className="py-2 px-2">{prescriptionLanguage === 'urdu' ? 'طریقہ استعمال و ضروری ہدایات' : 'Instructions'}</th>
+                <th className="py-2 px-2">{prescriptionLanguage === 'urdu' ? 'مدت استعمال' : 'Duration'}</th>
+                <th className="py-2 pl-2 text-right">{prescriptionLanguage === 'urdu' ? 'قیمت' : 'Est. Price'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-xs">
@@ -1131,18 +1148,26 @@ export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize
                     <td className="py-2.5 px-2">
                       <div className="font-bold text-sm text-black">{item.brandName || item.genericName}</div>
                       {item.brandName && <div className="text-[10px] text-slate-500">{item.genericName}</div>}
-                      <div className="text-[11px] font-semibold text-teal-800">{item.strength} • {item.form}</div>
+                      <div className="text-[11px] font-semibold text-teal-900">
+                        {item.strength} • {prescriptionLanguage === 'urdu' ? (URDU_FORM_MAP[item.form] || item.form) : item.form}
+                      </div>
                     </td>
                     <td className="py-2.5 px-2 whitespace-nowrap">
-                      <span className="font-bold text-black">{item.dosage}</span>
-                      <div className="text-[11px] text-slate-600">{item.frequency} • {item.route}</div>
+                      <span className="font-bold text-black">
+                        {prescriptionLanguage === 'urdu' ? translateDosageToUrdu(item.dosage, item.form) : item.dosage}
+                      </span>
+                      <div className="text-[11px] text-slate-600">
+                        {prescriptionLanguage === 'urdu' ? (URDU_FREQUENCY_MAP[item.frequency]?.ur || item.frequency) : `${item.frequency} • ${item.route}`}
+                      </div>
                     </td>
-                    {(prescriptionLanguage === 'both' || prescriptionLanguage === 'urdu') && (
-                      <td className="py-2.5 px-2 text-right font-medium text-emerald-950" dir="rtl">
-                        {getUrduTiming(item.instructions, item.frequency)}
-                      </td>
-                    )}
-                    <td className="py-2.5 px-2 font-medium text-slate-800">{item.duration}</td>
+                    <td className="py-2.5 px-2 font-medium text-emerald-950">
+                      {prescriptionLanguage === 'urdu'
+                        ? translateInstructionsToUrdu(item.instructions, item.frequency)
+                        : (item.instructions || 'As directed')}
+                    </td>
+                    <td className="py-2.5 px-2 font-medium text-slate-800">
+                      {prescriptionLanguage === 'urdu' ? translateDurationToUrdu(item.duration) : item.duration}
+                    </td>
                     <td className="py-2.5 pl-2 text-right font-semibold text-slate-800">
                       {itemPrice ? `₨ ${itemPrice}` : '—'}
                     </td>
@@ -1153,10 +1178,10 @@ export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize
             {totalEstimatedPrice > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-slate-900 text-xs font-bold">
-                  <td colSpan={prescriptionLanguage === 'english' ? 4 : 5} className="py-2.5 text-right text-slate-700 uppercase">
-                    Estimated Total Pharmacy Bill:
+                  <td colSpan={5} className="py-2.5 text-right text-slate-700 uppercase">
+                    {prescriptionLanguage === 'urdu' ? 'کل متوقع میڈیکل اسٹور بل:' : 'Estimated Total Pharmacy Bill:'}
                   </td>
-                  <td className="py-2.5 pl-2 text-right text-emerald-700 text-sm">
+                  <td className="py-2.5 pl-2 text-right text-emerald-700 text-sm font-bold">
                     ₨ {totalEstimatedPrice.toLocaleString()}
                   </td>
                 </tr>
@@ -1171,12 +1196,13 @@ export const PrescriptionPanel: React.FC<PrescriptionPanelProps> = ({ onMinimize
         </div>
 
         {/* Advice & Labs */}
-        <div className="grid grid-cols-2 gap-6 mb-6 border-t border-slate-300 pt-4 text-xs">
+        <div className="grid grid-cols-2 gap-6 mb-6 border-t border-slate-300 pt-4 text-xs" dir={prescriptionLanguage === 'urdu' ? 'rtl' : 'ltr'}>
           <div>
-            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-1.5">Diet & Lifestyle Advice / ہدایات:</h4>
-            <p className="text-slate-800 whitespace-pre-line leading-relaxed">{prescription.advice || 'Standard balanced diet, adequate hydration, and rest.'}</p>
-            <p className="text-emerald-900 mt-1 font-medium text-[11px]" dir="rtl">
-              مناسب آرام، پانی کا کثرت سے استعمال اور غذائی پرہیز کا خاص خیال رکھیں۔
+            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-800 mb-1.5">
+              {prescriptionLanguage === 'urdu' ? 'پرہیز و ضروری ہدایات (Diet & Advice):' : 'Diet & Lifestyle Advice:'}
+            </h4>
+            <p className="text-slate-900 whitespace-pre-line leading-relaxed font-medium">
+              {prescriptionLanguage === 'urdu' ? translateAdviceToUrdu(prescription.advice) : (prescription.advice || 'Standard balanced diet, adequate hydration, and rest.')}
             </p>
           </div>
           <div>
