@@ -256,13 +256,12 @@ export const SettingsPanel = () => {
                 <div>
                   <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-1.5">Default Prescription Language</label>
                   <select 
-                    value={roleForm.defaultRxLanguage || 'both'}
+                    value={roleForm.defaultRxLanguage || 'english'}
                     onChange={e => setRoleForm({ ...roleForm, defaultRxLanguage: e.target.value })}
                     className="w-full p-2.5 bg-canvas border border-border rounded-xl focus:border-primary focus:ring-1 focus:ring-primary"
                   >
-                    <option value="both">Bilingual (English + Urdu اردو)</option>
-                    <option value="english">English Only</option>
-                    <option value="urdu">Urdu Only (اردو)</option>
+                    <option value="english">English</option>
+                    <option value="urdu">اردو (Urdu)</option>
                   </select>
                 </div>
               </div>

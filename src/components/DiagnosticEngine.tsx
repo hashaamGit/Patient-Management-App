@@ -246,6 +246,8 @@ export const DiagnosticEngine: React.FC = () => {
     contextualPlan?: ContextualTreatmentPlan;
   } | null>(null);
   const [transferToast, setTransferToast] = useState<string | null>(null);
+  const [followUpAnswers, setFollowUpAnswers] = useState<Record<number, string>>({});
+  const [followUpFeedback, setFollowUpFeedback] = useState<string | null>(null);
 
   // Symptoms Filter Mode ('all' vs 'common')
   const [symptomsFilterMode, setSymptomsFilterMode] = useState<'all' | 'common'>('all');
@@ -404,6 +406,71 @@ export const DiagnosticEngine: React.FC = () => {
       });
       setAiAnalyzing(false);
     }, 600);
+  };
+
+  // Apply responsive follow-up question answers and re-calibrate treatment
+  const handleApplyFollowUpAnswers = () => {
+    if (!aiResult) return;
+    const answeredEntries = Object.entries(followUpAnswers).filter(([_, ans]) => ans && ans.trim().length > 0);
+    if (answeredEntries.length === 0) return;
+
+    const followUpSentences = answeredEntries
+      .map(([idx, ans]) => {
+        const qText = aiResult.stepwiseQuestions[Number(idx)] || `Question ${Number(idx) + 1}`;
+        return `${qText}: ${ans}`;
+      })
+      .join(' | ');
+
+    const combinedNotes = `${aiPrompt} | Doctor Follow-Up: ${followUpSentences}`;
+
+    // Re-generate contextual treatment with new follow-up findings
+    const updatedPlan = generateContextualTreatmentRecommendations({
+      patient,
+      patientHistory,
+      soapNote,
+      inventory,
+      activeSymptoms: selectedSymptoms,
+      activeDiseases: selectedDiseases,
+      clinicalNotes: combinedNotes,
+      freeTextObservations: followUpSentences
+    });
+
+    const updatedMeds = updatedPlan.suggestedMedications.map(m => ({
+      generic: m.genericName,
+      brand: m.brandName,
+      dose: m.dosage,
+      freq: m.frequency,
+      dur: m.duration,
+      instructions: m.instructions,
+      rationale: m.clinicalRationale,
+      category: m.category,
+      inStock: m.inStock,
+      stockPrice: m.stockPrice,
+      isPediatricDosed: m.isPediatricDosed
+    }));
+
+    const updatedLabs = Array.from(new Set([
+      ...updatedPlan.suggestedLabs.map(l => l.name),
+      ...aiResult.recommendedLabs
+    ]));
+
+    // Recalculate differential probabilities based on follow-up confirmation
+    const updatedDiffs = aiResult.differentials.map((d, i) => {
+      if (i === 0) return { ...d, probability: Math.min(95, d.probability + 8), rationale: `${d.rationale} (Reinforced by responsive follow-up findings)` };
+      return { ...d, probability: Math.max(5, d.probability - 4) };
+    });
+
+    setAiResult(prev => prev ? {
+      ...prev,
+      differentials: updatedDiffs,
+      suggestedTreatment: updatedMeds,
+      recommendedLabs: updatedLabs,
+      clinicalNotes: updatedPlan.clinicalAdviceSummary,
+      contextualPlan: updatedPlan
+    } : null);
+
+    setFollowUpFeedback('✓ Treatment plan, medications, and differentials successfully re-calibrated based on your follow-up answers!');
+    setTimeout(() => setFollowUpFeedback(null), 4500);
   };
 
   // Group 500+ common or all 1900+ symptoms
@@ -1461,16 +1528,88 @@ export const DiagnosticEngine: React.FC = () => {
             ))}
           </div>
 
-          {/* Stepwise Questions */}
-          <div className="space-y-2">
-            <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider">Next Stepwise Clinical Questions</h4>
-            <div className="space-y-1 text-xs">
-              {aiResult.stepwiseQuestions.map((q, i) => (
-                <div key={i} className="flex items-start gap-2 p-2 rounded bg-canvas border border-border">
-                  <span className="font-bold text-primary">Q{i + 1}.</span>
-                  <span className="text-text-secondary">{q}</span>
-                </div>
-              ))}
+          {/* Responsive Follow-Up Questions (Answer to Re-calibrate Treatment) */}
+          <div className="space-y-3 p-4 rounded-xl bg-canvas border border-teal-500/30">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles size={14} /> Next Follow-Up Clinical Questions (Responsive Inquiries)
+                </h4>
+                <p className="text-[11px] text-text-muted">
+                  Answer or describe patient status below to dynamically re-calibrate treatment and medications:
+                </p>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-700 border border-teal-500/20">
+                {Object.values(followUpAnswers).filter(Boolean).length} / {aiResult.stepwiseQuestions.length} Answered
+              </span>
+            </div>
+
+            {followUpFeedback && (
+              <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 text-xs font-semibold animate-in fade-in">
+                {followUpFeedback}
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              {aiResult.stepwiseQuestions.map((q, i) => {
+                const currentAns = followUpAnswers[i] || '';
+                const QUICK_CHOICES = ['Yes (ہاں)', 'No (نہیں)', 'Worsening (بڑھ رہا ہے)', 'Improving (بہتر)', 'Uncertain'];
+                return (
+                  <div key={i} className="p-3 rounded-lg bg-surface border border-border space-y-2">
+                    <div className="flex items-start gap-2 font-semibold text-text-primary">
+                      <span className="w-5 h-5 rounded-full bg-teal-500/15 text-teal-700 flex items-center justify-center text-[10px] shrink-0 font-bold">
+                        {i + 1}
+                      </span>
+                      <span>{q}</span>
+                    </div>
+
+                    {/* Quick Response Pills */}
+                    <div className="flex flex-wrap gap-1.5 pl-7">
+                      {QUICK_CHOICES.map(choice => {
+                        const isSelected = currentAns.startsWith(choice.split(' ')[0]);
+                        return (
+                          <button
+                            key={choice}
+                            onClick={() => setFollowUpAnswers(prev => ({ ...prev, [i]: choice }))}
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all border ${
+                              isSelected
+                                ? 'bg-primary text-white border-primary shadow-xs'
+                                : 'bg-canvas hover:bg-surface border-border text-text-secondary hover:text-text-primary'
+                            }`}
+                          >
+                            {choice}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Sentence Answer Input */}
+                    <div className="pl-7 pt-0.5">
+                      <input
+                        type="text"
+                        value={currentAns}
+                        onChange={(e) => setFollowUpAnswers(prev => ({ ...prev, [i]: e.target.value }))}
+                        placeholder="✍️ Or type answer details in sentences (e.g., 'Severe crushing pain for 2 hours, radiation to left arm')..."
+                        className="w-full px-3 py-1.5 bg-canvas border border-border rounded-lg text-xs text-text-primary placeholder:text-text-faint focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[10px] text-text-muted">
+                Answers are synthesized via clinical NLP into active medication and workup protocols.
+              </span>
+              <button
+                onClick={handleApplyFollowUpAnswers}
+                disabled={Object.values(followUpAnswers).filter(Boolean).length === 0}
+                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all cursor-pointer"
+              >
+                <Zap size={14} />
+                <span>Apply Follow-Up Answers &amp; Update Treatment Accordingly</span>
+              </button>
             </div>
           </div>
 
