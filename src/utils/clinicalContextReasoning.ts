@@ -7,9 +7,24 @@
 // 3. Demographics & Context (Pediatric/Geriatric, Pregnancy, Allergies)
 // 4. SOAP Notes (Subjective Chief Complaint, HPI, Objective Exam, Assessment)
 // 5. Hospital Inventory (In-stock brand/generic matching & pricing)
+// 6. Pre-Treatment Adaptive Clinical Inquiries (Interactive Symptom & Vitals Correlation)
 // ============================================================
 
 import type { Patient, PatientHistory, SOAPNote, InventoryItem } from '../types';
+
+export interface AdaptiveClinicalQuestion {
+  id: string;
+  question: string;
+  category: 'Vitals Alert' | 'History Correlate' | 'Symptom Characterization' | 'Red Flag Screening';
+  rationale: string;
+  options: Array<{
+    label: string;
+    value: string;
+    clinicalImpact?: string;
+  }>;
+  relevantFactors: string[];
+  isUrgent?: boolean;
+}
 
 export interface ContextualMedicationSuggestion {
   id: string;
@@ -22,7 +37,7 @@ export interface ContextualMedicationSuggestion {
   frequency: string;
   duration: string;
   instructions: string;
-  clinicalRationale: string;    // Direct clinical reason citing vitals, history, or SOAP
+  clinicalRationale: string;
   category: string;
   inStock: boolean;
   stockPrice?: number;
@@ -32,7 +47,6 @@ export interface ContextualMedicationSuggestion {
 }
 
 export interface ContextualTreatmentPlan {
-  // Summary of patient factors evaluated
   patientSummary: {
     demographics: string;
     vitalsSummary: string;
@@ -41,9 +55,8 @@ export interface ContextualTreatmentPlan {
     soapFindings: string[];
     allergiesIdentified: string[];
     riskFactors: string[];
+    questionnaireInsights?: string[];
   };
-  
-  // Specific recommendations
   suggestedMedications: ContextualMedicationSuggestion[];
   supportiveTreatments: Array<{
     title: string;
@@ -72,6 +85,7 @@ export interface ClinicalContextInput {
   activeSymptoms?: string[];
   activeDiseases?: string[];
   clinicalNotes?: string;
+  questionAnswers?: Record<string, string>;
 }
 
 /**
@@ -84,7 +98,7 @@ const norm = (str?: string): string => (str || '').toLowerCase().trim();
  */
 export const checkAllergyContraindication = (drugName: string, patientAllergies: Array<{ name: string; severity?: string }>): boolean => {
   const d = norm(drugName);
-  return patientAllergies.some(a => {
+  return (patientAllergies || []).some(a => {
     const aName = norm(a.name);
     if (!aName) return false;
     // Penicillin cross-reactivity
@@ -106,6 +120,236 @@ export const checkAllergyContraindication = (drugName: string, patientAllergies:
 };
 
 /**
+ * Generates dynamic, patient-tailored clinical questions based on active symptoms,
+ * vitals (BP, HR, Temp, SpO2, RR), and past medical history before treatment recommendations.
+ */
+export function generateAdaptiveClinicalQuestions(input: ClinicalContextInput): AdaptiveClinicalQuestion[] {
+  const {
+    patient,
+    patientHistory = { pastMedical: [], pastSurgical: [], familyHistory: [], socialHistory: { smoking: '', alcohol: '', occupation: '', exercise: '' } },
+    soapNote,
+    activeSymptoms = [],
+    activeDiseases = [],
+    clinicalNotes = ''
+  } = input;
+
+  const questions: AdaptiveClinicalQuestion[] = [];
+  const sList = activeSymptoms.map(norm);
+  const dList = activeDiseases.map(norm);
+  const pHistory = (patientHistory?.pastMedical || []).concat(patient?.comorbidities || []).map(norm);
+  const notes = `${norm(soapNote?.subjective?.chiefComplaint)} ${norm(soapNote?.subjective?.hpiNarrative)} ${norm(clinicalNotes)} ${sList.join(' ')}`;
+
+  // Parse Vitals
+  const [sysStr, diaStr] = (patient.bp || '').split('/');
+  const sys = parseInt(sysStr, 10);
+  const dia = parseInt(diaStr, 10);
+  const isHTN = !isNaN(sys) && (sys >= 140 || dia >= 90);
+  const isSevereHTN = !isNaN(sys) && (sys >= 180 || dia >= 110);
+  const isHypotensive = !isNaN(sys) && (sys < 90 || dia < 60);
+
+  const hr = parseInt(patient.pulse || '', 10);
+  const isTachycardic = !isNaN(hr) && hr > 100;
+  const isBradycardic = !isNaN(hr) && hr < 60;
+
+  const temp = parseFloat(patient.temperature || '');
+  const isFever = !isNaN(temp) && temp >= 37.8;
+
+  const spo2 = parseInt(patient.spo2 || '', 10);
+  const isHypoxic = !isNaN(spo2) && spo2 < 94;
+
+  const hasDM = pHistory.some(h => h.includes('diabet') || h.includes('dm') || h.includes('sugar'));
+  const hasIHD = pHistory.some(h => h.includes('ihd') || h.includes('cad') || h.includes('heart') || h.includes('angina') || h.includes('stent'));
+  const hasAsthma = pHistory.some(h => h.includes('asthma') || h.includes('copd') || h.includes('bronch'));
+  const hasCKD = pHistory.some(h => h.includes('ckd') || h.includes('renal') || h.includes('kidney'));
+  const hasPUD = pHistory.some(h => h.includes('ulcer') || h.includes('gerd') || h.includes('gastrit') || h.includes('pud'));
+
+  const hasSymptom = (term: string) => sList.some(s => s.includes(norm(term))) || notes.includes(norm(term));
+
+  // 1. RESTLESSNESS & AGITATION INQUIRIES
+  if (hasSymptom('restless') || hasSymptom('agitat') || hasSymptom('akathisia') || hasSymptom('nervous') || hasSymptom('anxiety')) {
+    if (hasDM) {
+      questions.push({
+        id: 'q_restless_hypo',
+        question: 'Is the patient exhibiting diaphoresis, hunger, trembling, or confusion alongside restlessness?',
+        category: 'Red Flag Screening',
+        rationale: 'Restlessness in diabetic patients is a hallmark early neuroglycopenic sign of acute hypoglycemia (CBG < 70 mg/dL).',
+        options: [
+          { label: 'Yes — Cold sweats / tremors present (High suspicion of Hypoglycemia)', value: 'hypoglycemia_suspected', clinicalImpact: 'Prompt STAT point-of-care capillary blood glucose (CBG) & rapid glucose administration' },
+          { label: 'No — Glucose tested normal / purely psychomotor restlessness', value: 'euglycemic_restless', clinicalImpact: 'Consider primary anxiety, akathisia, or autonomic hyperarousal' },
+          { label: 'Unknown — Need immediate POC Glucose check', value: 'check_cbg_now', clinicalImpact: 'Order STAT Capillary Blood Glucose' }
+        ],
+        relevantFactors: ['Diabetes Mellitus History', 'Restlessness Sensation'],
+        isUrgent: true
+      });
+    }
+
+    if (isTachycardic || hasSymptom('palpitat') || hasSymptom('rapid heart')) {
+      questions.push({
+        id: 'q_restless_tachy',
+        question: `With resting pulse of ${patient.pulse || '>100'} bpm, are there signs of thyrotoxicosis, acute panic, or stimulant/sympathomimetic exposure?`,
+        category: 'Vitals Alert',
+        rationale: 'Tachycardia paired with restlessness points to adrenergic storm (thyroid storm, panic disorder, sympathomimetic toxicity, or caffeine excess).',
+        options: [
+          { label: 'Thyroid/Metabolic signs (Heat intolerance, fine finger tremor, goiter)', value: 'thyrotoxic_features', clinicalImpact: 'Requires Free T3/T4/TSH panel & non-selective beta-blockade if safe' },
+          { label: 'Acute Panic/Anxiety state (Hyperventilation, chest tightness, impending doom)', value: 'acute_panic_state', clinicalImpact: 'Indicates short-term anxiolytic protocol & reassurance breathing' },
+          { label: 'Excess stimulants / decongestant / caffeine ingestion', value: 'stimulant_induced', clinicalImpact: 'Discontinue offending agent; supportive hydration' }
+        ],
+        relevantFactors: [`Pulse: ${patient.pulse || '100+'} bpm`, 'Restlessness / Palpitations'],
+        isUrgent: false
+      });
+    }
+
+    if (isSevereHTN || isHTN) {
+      questions.push({
+        id: 'q_restless_htn',
+        question: `Given elevated blood pressure (${patient.bp || 'Elevated'}), are there encephalopathic symptoms (throbbing headache, visual blur, nausea)?`,
+        category: 'Vitals Alert',
+        rationale: 'Restlessness with severe HTN can signify acute end-organ hypertensive urgency or encephalopathy.',
+        options: [
+          { label: 'Present — Severe occipital headache and visual blurring noted', value: 'hypertensive_urgency_signs', clinicalImpact: 'Urgent gradual MAP reduction; fundoscopy / neurological monitoring' },
+          { label: 'Absent — No target end-organ symptoms observed', value: 'isolated_htn_restless', clinicalImpact: 'Standard anti-hypertensive titration & calming environment' }
+        ],
+        relevantFactors: [`BP: ${patient.bp || 'Elevated'}`, 'Restlessness'],
+        isUrgent: isSevereHTN
+      });
+    }
+
+    if (isFever) {
+      questions.push({
+        id: 'q_restless_fever',
+        question: `With elevated body temperature (${patient.temperature || 'Fever'}°C), is there neck stiffness, confusion, or delirium?`,
+        category: 'Red Flag Screening',
+        rationale: 'Febrile restlessness/agitation requires ruling out central nervous system infection (meningitis/encephalitis) or systemic sepsis.',
+        options: [
+          { label: 'Meningeal irritation or severe delirium present', value: 'meningism_delirium', clinicalImpact: 'STAT Blood Cultures, Lumbar Puncture evaluation, IV Ceftriaxone' },
+          { label: 'Alert, oriented, purely febrile discomfort / rigors', value: 'benign_febrile_restless', clinicalImpact: 'Antipyretic therapy (Paracetamol) + hydration' }
+        ],
+        relevantFactors: [`Temp: ${patient.temperature || '38+'}°C`, 'Restlessness'],
+        isUrgent: true
+      });
+    }
+
+    if (questions.filter(q => q.id.startsWith('q_restless')).length === 0) {
+      questions.push({
+        id: 'q_restless_general',
+        question: 'What is the primary character of the patient\'s restlessness?',
+        category: 'Symptom Characterization',
+        rationale: 'Distinguishes subjective psychomotor agitation from physical motor akathisia or sleep-related restlessness.',
+        options: [
+          { label: 'Inner motor urge to constantly move legs/pace (Akathisia / Drug-induced)', value: 'motor_akathisia', clinicalImpact: 'Review dopamine antagonists; consider Propranolol or Benzodiazepine' },
+          { label: 'Psychological anxiety and insomnia with difficulty relaxing', value: 'anxiety_insomnia', clinicalImpact: 'Sleep hygiene, short-term mild anxiolytic, cognitive counseling' },
+          { label: 'Physical discomfort secondary to underlying pain/malaise', value: 'pain_induced_restless', clinicalImpact: 'Optimize analgesia and underlying somatic cause' }
+        ],
+        relevantFactors: ['Restlessness / Agitation Complaint']
+      });
+    }
+  }
+
+  // 2. CHEST PAIN & CARDIOVASCULAR INQUIRIES
+  if (hasSymptom('chest pain') || hasSymptom('substernal') || hasSymptom('angina') || hasSymptom('chest tight')) {
+    questions.push({
+      id: 'q_chest_pain_character',
+      question: 'What is the onset, radiation, and response to exertion or nitrates?',
+      category: 'Red Flag Screening',
+      rationale: `Assessing pre-test probability for Acute Coronary Syndrome in light of ${hasIHD ? 'known CAD history' : 'clinical presentation'}.`,
+      options: [
+        { label: 'Crushing/Pressure radiating to left arm/jaw, aggravated by exertion (Typical Angina)', value: 'typical_acs', clinicalImpact: 'STAT 12-Lead ECG, Serial Troponin-I, Aspirin + Clopidogrel loading' },
+        { label: 'Sharp/Pleuritic, worse with deep inspiration or lying flat (Pericarditis/Pleurisy)', value: 'pleuritic_chest_pain', clinicalImpact: 'ECG for diffuse PR depression/ST elevation; consider NSAIDs/Colchicine if renal safe' },
+        { label: 'Burning retrosternal pain related to meals or lying down (GERD)', value: 'gerd_reflux_pain', clinicalImpact: 'PPI trial (Omeprazole) + antacids' },
+        { label: 'Reproducible localized wall tenderness on palpation (Costochondritis)', value: 'musculoskeletal_chest_pain', clinicalImpact: 'Topical or safe oral analgesics + local heat' }
+      ],
+      relevantFactors: ['Chest Pain Complaint', `Comorbidities: ${pHistory.join(', ') || 'None'}`],
+      isUrgent: true
+    });
+  }
+
+  // 3. SHORTNESS OF BREATH & RESPIRATORY INQUIRIES
+  if (hasSymptom('shortness of breath') || hasSymptom('dyspnea') || hasSymptom('cough') || isHypoxic) {
+    questions.push({
+      id: 'q_resp_severity',
+      question: 'Are there signs of acute bronchospasm, accessory muscle use, or purulent sputum?',
+      category: isHypoxic ? 'Red Flag Screening' : 'Symptom Characterization',
+      rationale: 'Differentiates infectious consolidation (pneumonia) from acute reactive bronchospasm or cardiogenic pulmonary edema.',
+      options: [
+        { label: 'Audible wheezing & prolonged expiration (Bronchospasm / Asthma Exacerbation)', value: 'bronchospasm_wheeze', clinicalImpact: 'Immediate Salbutamol/Ipratropium nebulization + systemic corticosteroids' },
+        { label: 'Fever with productive yellow/green sputum and crackles (Bacterial LRTI)', value: 'infectious_pneumonia', clinicalImpact: 'Chest X-Ray + Augmentin/Azithromycin targeted antimicrobial therapy' },
+        { label: 'Orthopnea, PND, and bilateral ankle swelling (Cardiogenic Congestion)', value: 'cardiac_pulmonary_edema', clinicalImpact: 'IV Furosemide diuresis, fluid restriction, cardiology consult' },
+        { label: 'Dry irritating nocturnal cough with normal lung auscultation', value: 'dry_cough_uncomplicated', clinicalImpact: 'Antitussive / Antihistamine symptomatic relief' }
+      ],
+      relevantFactors: [`SpO2: ${patient.spo2 || 'Recorded'}%`, 'Respiratory Symptoms']
+    });
+  }
+
+  // 4. GASTROINTESTINAL & EPIGASTRIC INQUIRIES
+  if (hasSymptom('abdominal pain') || hasSymptom('stomach') || hasSymptom('epigastric') || hasSymptom('nausea') || hasSymptom('vomit')) {
+    questions.push({
+      id: 'q_gi_alarm',
+      question: 'Are any GI alarm features present (hematemesis, melena, involuntary abdominal guarding)?',
+      category: hasPUD ? 'Red Flag Screening' : 'Symptom Characterization',
+      rationale: `Screens for acute bleeding or perforated viscus, especially with ${hasPUD ? 'known ulcer history' : 'acute abdominal complaints'}.`,
+      options: [
+        { label: 'Alarm signs present (Coffee-ground emesis, black tarry stool, or rigid abdomen)', value: 'gi_alarm_bleed', clinicalImpact: 'STAT IV PPI infusion, Blood Grouping/Cross-match, surgical consult' },
+        { label: 'Epigastric burning relieved by antacids / food intake (Dyspepsia/PUD)', value: 'peptic_dyspepsia', clinicalImpact: 'High-dose PPI + H. Pylori eradication consideration' },
+        { label: 'Cramping with watery diarrhea and nausea (Acute Gastroenteritis)', value: 'acute_gastroenteritis', clinicalImpact: 'Oral Rehydration Salts (ORS) + Probiotics + Antiemetic' },
+        { label: 'Right lower quadrant tenderness with rebound tenderness', value: 'suspected_appendicitis', clinicalImpact: 'Urgent Ultrasound Abdomen + Surgical referral; avoid enemas' }
+      ],
+      relevantFactors: ['GI Symptoms', `History of PUD: ${hasPUD ? 'Yes' : 'No'}`]
+    });
+  }
+
+  // 5. HEADACHE & NEUROLOGICAL INQUIRIES
+  if (hasSymptom('headache') || hasSymptom('dizziness') || hasSymptom('migraine')) {
+    questions.push({
+      id: 'q_neuro_character',
+      question: 'What is the time-course of the headache and are any neurological deficits present?',
+      category: 'Red Flag Screening',
+      rationale: 'Excludes life-threatening thunderclap subarachnoid hemorrhage or space-occupying lesions vs benign primary headache disorders.',
+      options: [
+        { label: 'Sudden explosive onset ("Worst headache of life") or focal weakness', value: 'thunderclap_red_flag', clinicalImpact: 'STAT Non-contrast Brain CT to exclude SAH / acute intracranial event' },
+        { label: 'Unilateral throbbing headache with nausea, photophobia & aura (Migraine)', value: 'migraine_episode', clinicalImpact: 'Triptans / NSAIDs if renal safe + antiemetic (Metoclopramide)' },
+        { label: 'Bilateral band-like tight pressure across forehead/neck (Tension Headache)', value: 'tension_headache', clinicalImpact: 'Paracetamol + muscle relaxation therapy + posture correction' },
+        { label: 'Room-spinning vertigo triggered by head turns without hearing loss (BPPV)', value: 'bppv_vertigo', clinicalImpact: 'Epley maneuver + short-term Dimenhydrinate/Betahistine' }
+      ],
+      relevantFactors: ['Neurological Symptoms', `BP: ${patient.bp || 'Normotensive'}`]
+    });
+  }
+
+  // 6. GENITOURINARY INQUIRIES
+  if (hasSymptom('dysuria') || hasSymptom('burning urination') || hasSymptom('urinary frequency') || hasSymptom('flank pain')) {
+    questions.push({
+      id: 'q_gu_character',
+      question: 'Is the urinary discomfort isolated to the lower tract, or is there fever with severe flank pain?',
+      category: 'Symptom Characterization',
+      rationale: 'Differentiates uncomplicated lower UTI (cystitis) from ascending pyelonephritis or obstructing nephrolithiasis.',
+      options: [
+        { label: 'High fever + Costovertebral flank tenderness (Upper UTI / Pyelonephritis)', value: 'pyelonephritis', clinicalImpact: 'Urine C/S, Ultrasound KUB, systemic fluoroquinolone/IV Ceftriaxone' },
+        { label: 'Dysuria, frequency and suprapubic pain without fever (Uncomplicated Cystitis)', value: 'lower_uti', clinicalImpact: 'Nitrofurantoin / Fosfomycin + urinary alkalizer' },
+        { label: 'Severe colicky flank pain radiating to groin with microscopic hematuria (Renal Colic)', value: 'renal_colic', clinicalImpact: 'Non-contrast CT KUB, Ketorolac/Diclofenac (if renal safe) + hydration' }
+      ],
+      relevantFactors: ['Urinary Complaints', `CKD Status: ${hasCKD ? 'History of CKD' : 'None'}`]
+    });
+  }
+
+  // Fallback general context question if no specific triggers
+  if (questions.length === 0) {
+    questions.push({
+      id: 'q_general_timeline',
+      question: 'What is the duration and trajectory of the patient\'s presenting symptoms?',
+      category: 'Symptom Characterization',
+      rationale: 'Establishes clinical acuity to guide acute symptomatic treatment vs chronic maintenance titration.',
+      options: [
+        { label: 'Acute (< 48 hours) with sudden onset and progressive discomfort', value: 'acute_presentation', clinicalImpact: 'Fast-acting symptom relief and targeted short-course pharmacotherapy' },
+        { label: 'Subacute (1-2 weeks) with persistent baseline symptoms', value: 'subacute_presentation', clinicalImpact: 'Diagnostic workup with targeted lab panels and structured follow-up' },
+        { label: 'Chronic (> 4 weeks) with fluctuating or recurrent episodes', value: 'chronic_presentation', clinicalImpact: 'Long-term disease management optimization and lifestyle modification' }
+      ],
+      relevantFactors: ['General Patient Assessment', `Vitals: ${patient.bp || 'Standard'} | ${patient.pulse || '72'} bpm`]
+    });
+  }
+
+  return questions;
+}
+
+/**
  * Evaluates patient context and generates personalized clinical recommendations
  */
 export function generateContextualTreatmentRecommendations(input: ClinicalContextInput): ContextualTreatmentPlan {
@@ -121,7 +365,8 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
     inventory = [],
     activeSymptoms = [],
     activeDiseases = [],
-    clinicalNotes = ''
+    clinicalNotes = '',
+    questionAnswers = {}
   } = input;
 
   // ---------------------------------------------------------
@@ -216,7 +461,7 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
   if (hasLiverDisease) relevantHistory.push('Hepatic Impairment (Hepatotoxic monitoring required)');
 
   // ---------------------------------------------------------
-  // 4. Parse SOAP Notes Findings
+  // 4. Parse SOAP Notes & Active Symptoms
   // ---------------------------------------------------------
   const soapFindings: string[] = [];
   const chiefComplaint = norm(soapNote.subjective?.chiefComplaint);
@@ -235,6 +480,14 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
   if (examText.includes('crackle') || examText.includes('crepit')) soapFindings.push('Physical Exam: Crepitations / Crackles noted on lung bases');
   if (examText.includes('tender')) soapFindings.push('Physical Exam: Localized tenderness identified');
   if (examText.includes('edema')) soapFindings.push('Physical Exam: Peripheral pedal edema present');
+
+  // Incorporate doctor answers to dynamic questions
+  const questionnaireInsights: string[] = [];
+  for (const [qKey, answerVal] of Object.entries(questionAnswers)) {
+    if (answerVal) {
+      questionnaireInsights.push(`${qKey}: ${answerVal}`);
+    }
+  }
 
   // ---------------------------------------------------------
   // 5. Track Contraindications & Withheld Meds
@@ -282,7 +535,6 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
   const supportiveTreatments: ContextualTreatmentPlan['supportiveTreatments'] = [];
   const suggestedLabs: ContextualTreatmentPlan['suggestedLabs'] = [];
 
-  // Helper to add medication safely
   const addMed = (med: {
     genericName: string;
     brandName: string;
@@ -297,12 +549,10 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
     category: string;
     pediatricAdjusted?: boolean;
   }) => {
-    // 1. Allergy check
     if (isAllergicTo(med.genericName) || isAllergicTo(med.brandName)) {
       return;
     }
 
-    // 2. Pregnancy Safety Check
     if (isPregnant) {
       const g = norm(med.genericName);
       if (g.includes('losartan') || g.includes('enalapril') || g.includes('captopril') || g.includes('atorvastatin') || g.includes('rosuvastatin') || g.includes('ciprofloxacin') || g.includes('doxycycline')) {
@@ -315,7 +565,6 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
       }
     }
 
-    // 3. Asthma vs Beta-Blocker Check
     if (hasAsthma && (norm(med.genericName).includes('atenolol') || norm(med.genericName).includes('propranolol') || norm(med.genericName).includes('bisoprolol'))) {
       withheldContraindications.push({
         medication: `${med.brandName} (${med.genericName})`,
@@ -325,7 +574,6 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
       return;
     }
 
-    // 4. Peptic Ulcer or CKD vs NSAIDs Check
     const isNSAID = norm(med.genericName).includes('ibuprofen') || norm(med.genericName).includes('diclofenac') || norm(med.genericName).includes('naproxen') || norm(med.brandName).includes('brufen') || norm(med.brandName).includes('voltaren');
     if (isNSAID && (hasPepticUlcer || hasCKD)) {
       withheldContraindications.push({
@@ -336,7 +584,6 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
       return;
     }
 
-    // 5. Pediatric Dosing Adjustment
     let finalDose = med.dosage;
     let finalStrength = med.strength;
     let finalForm = med.form;
@@ -347,17 +594,16 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
       if (norm(med.genericName).includes('paracetamol')) {
         finalStrength = '120mg/5ml';
         finalForm = 'Syrup';
-        const mlPerDose = Math.round((weightKg * 15) / 24); // 15 mg/kg
+        const mlPerDose = Math.round((weightKg * 15) / 24);
         finalDose = `${Math.max(2.5, mlPerDose)} ml`;
       } else if (norm(med.genericName).includes('amoxicillin')) {
         finalStrength = '250mg/5ml';
         finalForm = 'Suspension';
-        const mlPerDose = Math.round((weightKg * 40) / (3 * 50)); // 40 mg/kg/day divided TDS
+        const mlPerDose = Math.round((weightKg * 40) / (3 * 50));
         finalDose = `${Math.max(2.5, mlPerDose)} ml`;
       }
     }
 
-    // Check inventory stock
     const inv = matchInventory(med.genericName, med.brandName);
 
     suggestedMedications.push({
@@ -380,6 +626,79 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
       isPediatricDosed
     });
   };
+
+  // ---------------------------------------------------------
+  // Clinical Rule: Restlessness, Agitation, Anxiety, Insomnia
+  // ---------------------------------------------------------
+  const isRestless = notesCombined.includes('restless') || notesCombined.includes('agitat') || notesCombined.includes('anxiety') || notesCombined.includes('panic') || notesCombined.includes('insomnia') || notesCombined.includes('akathisia');
+  const answeredHypo = questionAnswers['q_restless_hypo'] === 'hypoglycemia_suspected' || questionAnswers['q_restless_hypo'] === 'check_cbg_now';
+  const answeredThyro = questionAnswers['q_restless_tachy'] === 'thyrotoxic_features';
+  const answeredPanic = questionAnswers['q_restless_tachy'] === 'acute_panic_state' || questionAnswers['q_restless_general'] === 'anxiety_insomnia';
+  const answeredAkathisia = questionAnswers['q_restless_general'] === 'motor_akathisia';
+
+  if (isRestless || answeredHypo || answeredPanic || answeredThyro || answeredAkathisia) {
+    if (answeredHypo || hasDM) {
+      supportiveTreatments.push({
+        title: 'STAT Capillary Blood Glucose (CBG) Protocol',
+        detail: 'Immediately check POC glucose. If CBG < 70 mg/dL, administer 15-20g fast-acting oral carbohydrates or IV 25% Dextrose (50ml).',
+        priority: 'STAT',
+        rationale: 'Rapidly identify and reverse neuroglycopenia driving the patient\'s acute restlessness.'
+      });
+      suggestedLabs.push({
+        name: 'Point-of-Care Random Blood Sugar (RBS)',
+        reason: 'STAT rule out of hypoglycemia in restless diabetic patient.',
+        urgency: 'STAT'
+      });
+    }
+
+    if (answeredThyro || (isTachycardic && !hasAsthma)) {
+      addMed({
+        genericName: 'Propranolol HCl',
+        brandName: 'Inderal',
+        strength: '10mg',
+        form: 'Tablet',
+        route: 'Oral',
+        dosage: '1 Tablet',
+        frequency: 'BD (Twice daily)',
+        duration: '7 Days',
+        instructions: 'Take with or without meals. Blunts adrenergic surge.',
+        clinicalRationale: `Indicated for restlessness with autonomic hyperactivity / tachycardia (${patient.pulse || '100+'} bpm). Non-selective beta-blockade blunts peripheral tremor and palpitations.`,
+        category: 'Cardiovascular / Autonomic'
+      });
+      suggestedLabs.push({
+        name: 'Thyroid Profile (Free T3, Free T4, TSH)',
+        reason: 'Investigate thyrotoxic storm / hyperthyroidism causing restlessness and tachycardia.',
+        urgency: 'Urgent'
+      });
+      suggestedLabs.push({
+        name: 'Serum Electrolytes (Na, K, Cl, Ca, Mg)',
+        reason: 'Screen for electrolyte derangements causing neuromuscular excitability.',
+        urgency: 'Routine'
+      });
+    }
+
+    if (answeredPanic || (!hasDM && !answeredThyro)) {
+      addMed({
+        genericName: 'Alprazolam',
+        brandName: 'Xanax',
+        strength: '0.25mg',
+        form: 'Tablet',
+        route: 'Oral',
+        dosage: '1 Tablet',
+        frequency: 'PRN at bedtime or acute anxiety peak (Max OD)',
+        duration: '3-5 Days (Short course)',
+        instructions: 'May cause drowsiness. Do not drive or operate machinery. Short-term relief only.',
+        clinicalRationale: 'Provides rapid relief for acute psychomotor agitation and severe anxiety-driven restlessness.',
+        category: 'Psychiatric / Anxiolytics'
+      });
+      supportiveTreatments.push({
+        title: 'Calming Environment & Breathing Modulation',
+        detail: 'Position patient in a quiet, low-stimulus room. Guide 4-7-8 diaphragmatic breathing to enhance parasympathetic tone.',
+        priority: 'Routine',
+        rationale: 'Non-pharmacologic stabilization for psychomotor tension.'
+      });
+    }
+  }
 
   // ---------------------------------------------------------
   // Clinical Rule 1: Fever / Pyrexia (Vitals)
@@ -425,7 +744,6 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
   const isRespIssue = isHypoxic || isTachypneic || notesCombined.includes('cough') || notesCombined.includes('breath') || notesCombined.includes('chest tight') || notesCombined.includes('wheez') || notesCombined.includes('sputum') || hasAsthma;
 
   if (isRespIssue) {
-    // Bronchodilator inhaler
     addMed({
       genericName: 'Salbutamol HFA',
       brandName: 'Ventolin',
@@ -440,7 +758,6 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
       category: 'Respiratory'
     });
 
-    // Inpatient or severe respiratory infection
     if (notesCombined.includes('pneumonia') || notesCombined.includes('purulent') || notesCombined.includes('productive') || (isFever && notesCombined.includes('cough'))) {
       const hasPenicillinAllergy = isAllergicTo('Amoxicillin') || isAllergicTo('Penicillin');
       
@@ -451,121 +768,178 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
           strength: '625mg',
           form: 'Tablet',
           route: 'Oral',
-          dosage: '1 Tablet',
-          frequency: 'BD (Every 12h)',
-          duration: '5-7 Days',
-          instructions: 'Take at start of meals to minimize gastrointestinal discomfort. Complete full course.',
-          clinicalRationale: 'First-line empirical coverage for respiratory tract infection. Safe with current renal and hepatic profile.',
+          dosage: isPediatric ? 'Weight-adjusted syrup' : '1 Tablet',
+          frequency: 'BD (Every 12 hours)',
+          duration: '7 Days',
+          instructions: 'Complete the full 7-day course even if feeling better. Take with meals.',
+          clinicalRationale: 'First-line empirical antimicrobial coverage for productive respiratory tract infection / community acquired pneumonia.',
           category: 'Antibiotics'
         });
       } else {
-        // Safe alternative for Penicillin-allergic patients
         addMed({
           genericName: 'Azithromycin',
-          brandName: 'Azomax',
+          brandName: 'Zithromax',
           strength: '500mg',
           form: 'Tablet',
           route: 'Oral',
           dosage: '1 Tablet',
           frequency: 'OD (Once daily)',
-          duration: '3 Days',
-          instructions: 'Take 1 hour before or 2 hours after meals with a full glass of water.',
-          clinicalRationale: 'Prescribed as safe macrolide alternative because patient has a documented Penicillin allergy.',
+          duration: '3-5 Days',
+          instructions: 'Take 1 hour before or 2 hours after meals.',
+          clinicalRationale: 'Macrolide alternative for respiratory tract infection selected because patient has documented Penicillin allergy.',
           category: 'Antibiotics'
         });
       }
 
       suggestedLabs.push({
-        name: 'Chest X-Ray (PA View)',
-        reason: `Evaluate pulmonary infiltrates or consolidation given cough and ${hasTemp ? `fever of ${temp}°C` : 'respiratory symptoms'}.`,
+        name: 'Chest X-Ray PA View',
+        reason: 'Evaluate for focal consolidation, infiltrate, or pleural effusion.',
         urgency: 'Urgent'
       });
     }
 
-    if (isHypoxic) {
+    if (isCriticallyHypoxic) {
       supportiveTreatments.push({
-        title: 'Supplemental Oxygen Therapy',
-        detail: `Administer nasal cannula O2 at 2-4 L/min targeting SpO2 ${hasAsthma ? '88-92%' : '94-98%'}.`,
+        title: 'Supplemental High-Flow Oxygen Therapy',
+        detail: 'Administer Oxygen via Nasal Cannula (2-4 L/min) or Venturi Mask to titrate SpO2 > 94% (88-92% if COPD).',
         priority: 'STAT',
-        rationale: `Active SpO2 is critically depressed at ${spo2}%.`
+        rationale: `SpO2 is critically low at ${spo2}%, requiring immediate supplemental O2.`
       });
     }
   }
 
   // ---------------------------------------------------------
-  // Clinical Rule 3: Cardiovascular / Hypertension (Vitals + History)
+  // Clinical Rule 3: Hypertension / Cardiovascular (Vitals & History)
   // ---------------------------------------------------------
-  if (isHypertensive || hasIHD || (hasHistory('hypertension') && !isHypotensive)) {
-    // If not already on CCB or if high BP in vitals
-    if (isHypertensive) {
+  if (isHypertensive || hasIHD || notesCombined.includes('hypertens') || notesCombined.includes('angina') || notesCombined.includes('chest pain')) {
+    if (isSevereHTN) {
+      supportiveTreatments.push({
+        title: 'Immediate Cardiovascular Stabilization & Monitoring',
+        detail: 'Rest in quiet supine position with 30-degree head elevation. Re-check BP every 15 minutes. Target gradual BP reduction of <= 20% in first 2-4 hours.',
+        priority: 'STAT',
+        rationale: `Blood pressure is dangerously elevated at ${patient.bp} mmHg (Hypertensive Crisis).`
+      });
+      suggestedLabs.push({
+        name: '12-Lead Electrocardiogram (ECG)',
+        reason: 'Assess for acute ST-T changes, ischemia, or LV strain pattern.',
+        urgency: 'STAT'
+      });
+      suggestedLabs.push({
+        name: 'Serum Cardiac Troponin-I / High-Sensitivity Troponin',
+        reason: 'Rule out acute myocardial necrosis in hypertensive crisis with chest symptoms.',
+        urgency: 'STAT'
+      });
+    }
+
+    if (!isPregnant) {
       addMed({
-        genericName: 'Amlodipine',
+        genericName: 'Amlodipine Besylate',
         brandName: 'Norvasc',
         strength: '5mg',
         form: 'Tablet',
         route: 'Oral',
         dosage: '1 Tablet',
         frequency: 'OD (Morning)',
-        duration: '30 Days',
-        instructions: 'Take at the same time each morning. Monitor BP bi-weekly.',
-        clinicalRationale: `Indicated for elevated BP reading of ${patient.bp} mmHg. CCB is safe across asthmatic and renal comorbidity baselines.`,
+        duration: '1 Month',
+        instructions: 'Take once daily in the morning with water. Monitor for ankle swelling.',
+        clinicalRationale: `Indicated for BP control (${patient.bp || 'Elevated'}). Calcium channel blocker safe in asthma and CKD baselines.`,
         category: 'Cardiovascular'
       });
-
-      supportiveTreatments.push({
-        title: 'Dietary Sodium Restriction (DASH Protocol)',
-        detail: 'Restrict dietary sodium to <2g/day (<5g table salt). Maintain active home BP monitoring log twice daily.',
-        priority: 'Routine',
-        rationale: `Recorded blood pressure is ${patient.bp} mmHg.`
-      });
-
-      suggestedLabs.push({
-        name: 'Standard 12-Lead ECG',
-        reason: `Rule out LVH, ischemia, or conduction delays given BP of ${patient.bp} mmHg.`,
-        urgency: isSevereHTN ? 'STAT' : 'Routine'
-      });
-      suggestedLabs.push({
-        name: 'Serum Electrolytes, Urea & Creatinine (RFTs)',
-        reason: 'Assess baseline renal function prior to ongoing antihypertensive therapy.',
-        urgency: 'Routine'
-      });
-    }
-
-    if (hasIHD && !isPregnant) {
+    } else {
       addMed({
-        genericName: 'Aspirin (Cardio)',
-        brandName: 'Loprin',
-        strength: '75mg',
+        genericName: 'Methyldopa',
+        brandName: 'Aldomet',
+        strength: '250mg',
         form: 'Tablet',
         route: 'Oral',
         dosage: '1 Tablet',
-        frequency: 'OD (After lunch)',
-        duration: '30 Days',
-        instructions: 'Take with food or milk to prevent gastric irritation.',
-        clinicalRationale: 'Secondary prevention for established Ischemic Heart Disease / CAD documented in patient history.',
+        frequency: 'TDS',
+        duration: '1 Month',
+        instructions: 'Take with meals. Monitor blood pressure daily.',
+        clinicalRationale: 'First-line safe anti-hypertensive chosen specifically for pregnant patient (ACEi/ARBs are teratogenic).',
         category: 'Cardiovascular'
       });
     }
-  } else if (isHypotensive) {
-    supportiveTreatments.push({
-      title: 'Emergency IV Volume Resuscitation',
-      detail: 'Infuse 500ml Normal Saline 0.9% IV STAT over 30 minutes. Re-evaluate BP and heart rate. Withhold all antihypertensive and vasodilator medications.',
-      priority: 'STAT',
-      rationale: `Critical hypotension detected (${patient.bp} mmHg). Risk of circulatory compromise.`
+
+    if (hasIHD || notesCombined.includes('angina') || notesCombined.includes('chest pain')) {
+      const hasAspirinAllergy = isAllergicTo('Aspirin');
+      if (!hasAspirinAllergy && !hasPepticUlcer) {
+        addMed({
+          genericName: 'Aspirin (Enteric Coated)',
+          brandName: 'Loprin',
+          strength: '75mg',
+          form: 'Tablet',
+          route: 'Oral',
+          dosage: '1 Tablet',
+          frequency: 'OD (After dinner)',
+          duration: '1 Month',
+          instructions: 'Take with a full meal to protect gastric lining.',
+          clinicalRationale: 'Cardioprotective antiplatelet therapy indicated for known CAD / ischemic cardiovascular history.',
+          category: 'Cardiovascular'
+        });
+      }
+
+      if (!isPregnant) {
+        addMed({
+          genericName: 'Atorvastatin Calcium',
+          brandName: 'Lipitor',
+          strength: '20mg',
+          form: 'Tablet',
+          route: 'Oral',
+          dosage: '1 Tablet',
+          frequency: 'OD (At bedtime)',
+          duration: '1 Month',
+          instructions: 'Take at night. Report any unexplained muscle soreness.',
+          clinicalRationale: 'Lipid-lowering and plaque stabilization protocol for CAD patient.',
+          category: 'Cardiovascular'
+        });
+      }
+    }
+  }
+
+  // ---------------------------------------------------------
+  // Clinical Rule 4: Diabetes Mellitus (History)
+  // ---------------------------------------------------------
+  if (hasDM || notesCombined.includes('diabet') || notesCombined.includes('glucose') || notesCombined.includes('sugar')) {
+    if (!hasCKD) {
+      addMed({
+        genericName: 'Metformin HCl',
+        brandName: 'Glucophage',
+        strength: '500mg',
+        form: 'Tablet',
+        route: 'Oral',
+        dosage: '1 Tablet',
+        frequency: 'BD (With main meals)',
+        duration: '1 Month',
+        instructions: 'Take strictly with or immediately after food to minimize GI upset.',
+        clinicalRationale: 'First-line biguanide for glycemic control. Verified eGFR/renal function safe.',
+        category: 'Endocrine/Diabetes'
+      });
+    }
+
+    suggestedLabs.push({
+      name: 'Glycated Hemoglobin (HbA1c)',
+      reason: 'Assess 3-month glycemic control trajectory.',
+      urgency: 'Routine'
     });
     suggestedLabs.push({
-      name: 'Serum Lactate & Blood Gas Analysis (ABG/VBG)',
-      reason: `Assess tissue perfusion and metabolic acidosis in hypotensive patient (${patient.bp} mmHg).`,
-      urgency: 'STAT'
+      name: 'Fasting & Postprandial Blood Glucose (FBS/RBS)',
+      reason: 'Evaluate immediate glycemic profile.',
+      urgency: 'Routine'
+    });
+    suggestedLabs.push({
+      name: 'Serum Creatinine & eGFR',
+      reason: 'Monitor renal safety profile for diabetic patient.',
+      urgency: 'Routine'
     });
   }
 
   // ---------------------------------------------------------
-  // Clinical Rule 4: Gastrointestinal / Gastritis / PUD (SOAP + History)
+  // Clinical Rule 5: Gastrointestinal / Gastric Distress / Dyspepsia
   // ---------------------------------------------------------
-  const isGIComplaint = notesCombined.includes('epigastric') || notesCombined.includes('stomach') || notesCombined.includes('gastritis') || notesCombined.includes('acid') || notesCombined.includes('gerd') || notesCombined.includes('heartburn') || notesCombined.includes('vomit') || notesCombined.includes('nausea') || hasPepticUlcer;
+  const isGI = hasPepticUlcer || notesCombined.includes('ulcer') || notesCombined.includes('gerd') || notesCombined.includes('gastrit') || notesCombined.includes('epigastric') || notesCombined.includes('heartburn') || notesCombined.includes('acidity') || notesCombined.includes('nausea');
 
-  if (isGIComplaint) {
+  if (isGI) {
     addMed({
       genericName: 'Omeprazole',
       brandName: 'Risek',
@@ -575,58 +949,35 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
       dosage: '1 Capsule',
       frequency: 'OD (30 min before breakfast)',
       duration: '14 Days',
-      instructions: 'Swallow whole with a glass of water. Do not crush or chew.',
-      clinicalRationale: `Indicated for ${hasPepticUlcer ? 'documented PUD/Gastritis history' : 'epigastric burning / dyspeptic complaints noted in SOAP note'}. Provides potent acid suppression and mucosal protection.`,
+      instructions: 'Swallow whole with water 30 minutes before the morning meal.',
+      clinicalRationale: `Proton pump inhibitor indicated for ${hasPepticUlcer ? 'documented history of Peptic Ulcer Disease / Gastritis' : 'epigastric symptoms and acid suppression'}.`,
       category: 'GI Medications'
     });
 
     if (notesCombined.includes('nausea') || notesCombined.includes('vomit')) {
       addMed({
-        genericName: 'Domperidone',
-        brandName: 'Motilium',
-        strength: '10mg',
+        genericName: 'Dimenhydrinate / Ondansetron',
+        brandName: 'Gravinate',
+        strength: '50mg',
         form: 'Tablet',
         route: 'Oral',
         dosage: '1 Tablet',
-        frequency: 'TDS (15 min before meals)',
-        duration: '5 Days',
-        instructions: 'Take before meals for nausea and gastric motility.',
-        clinicalRationale: 'Relieves upper gastrointestinal nausea and emesis noted in subjective SOAP narrative.',
+        frequency: 'TDS PRN for nausea/vomiting',
+        duration: '3 Days',
+        instructions: 'Take 30 minutes before meals or travel.',
+        clinicalRationale: 'Antiemetic support to alleviate distressing nausea/emesis.',
         category: 'GI Medications'
       });
     }
   }
 
   // ---------------------------------------------------------
-  // Clinical Rule 5: Diabetes Mellitus (History + Comorbidity)
+  // Clinical Rule 6: Pain Management (Vitals & SOAP)
   // ---------------------------------------------------------
-  if (hasDM && !hasCKD) {
-    addMed({
-      genericName: 'Metformin HCl',
-      brandName: 'Glucophage',
-      strength: '500mg',
-      form: 'Tablet',
-      route: 'Oral',
-      dosage: '1 Tablet',
-      frequency: 'BD (With or immediately after meals)',
-      duration: '30 Days',
-      instructions: 'Take with food to minimize abdominal fullness or gastrointestinal symptoms.',
-      clinicalRationale: 'Baseline insulin-sensitizing glycemic therapy for documented Type 2 Diabetes comorbidity. Verified no severe renal impairment.',
-      category: 'Antidiabetics'
-    });
-
-    suggestedLabs.push({
-      name: 'Fasting Blood Sugar (FBS) & HbA1c',
-      reason: 'Evaluate 3-month glycemic control for diabetic patient.',
-      urgency: 'Routine'
-    });
-  }
-
-  // ---------------------------------------------------------
-  // Clinical Rule 6: Pain Management (Vitals Pain Score)
-  // ---------------------------------------------------------
-  if (hasPain && pain >= 4 && !suggestedMedications.some(m => m.genericName === 'Paracetamol')) {
-    if (!hasPepticUlcer && !hasCKD && !isAllergicTo('Ibuprofen')) {
+  if (hasPain && pain > 0 && !suggestedMedications.some(m => m.genericName.toLowerCase().includes('paracetamol'))) {
+    const canUseNSAID = !hasPepticUlcer && !hasCKD && !isAllergicTo('Ibuprofen') && !isAllergicTo('Brufen');
+    
+    if (canUseNSAID && isSeverePain) {
       addMed({
         genericName: 'Ibuprofen',
         brandName: 'Brufen',
@@ -634,14 +985,13 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
         form: 'Tablet',
         route: 'Oral',
         dosage: '1 Tablet',
-        frequency: 'TDS (After meals)',
+        frequency: 'TDS (Every 8h after meals)',
         duration: '3-5 Days',
-        instructions: 'Always take after food. Discontinue if stomach pain develops.',
-        clinicalRationale: `Indicated for acute pain score of ${pain}/10. Verified patient has no documented peptic ulcer or renal disease history.`,
+        instructions: 'Take strictly with or after meals. Stop if stomach burning occurs.',
+        clinicalRationale: `Potent anti-inflammatory analgesia for severe pain score (${pain}/10). Renal and gastric baseline verified clear.`,
         category: 'Analgesics/Antipyretics'
       });
     } else {
-      // Safe alternative when NSAIDs are contraindicated
       addMed({
         genericName: 'Paracetamol',
         brandName: 'Panadol',
@@ -714,7 +1064,8 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
       relevantHistory,
       soapFindings,
       allergiesIdentified,
-      riskFactors
+      riskFactors,
+      questionnaireInsights
     },
     suggestedMedications,
     supportiveTreatments,

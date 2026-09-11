@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { ALL_SYMPTOMS } from '../data/expandedSymptoms';
+import { ALL_SYMPTOMS, MOST_COMMON_SYMPTOMS } from '../data/expandedSymptoms';
 import { ALL_DISEASES } from '../data/expandedDiseases';
 import { DECISION_TREES } from '../data/decisionTrees';
 import type { TerminalDiagnosis } from '../types';
@@ -11,7 +11,7 @@ import {
   ChevronDown, ChevronUp, Clock, Plus, Sparkles, Check,
   User, Heart, ShieldCheck, AlertCircle
 } from 'lucide-react';
-import { generateContextualTreatmentRecommendations, type ContextualTreatmentPlan } from '../utils/clinicalContextReasoning';
+import { generateContextualTreatmentRecommendations, generateAdaptiveClinicalQuestions, type ContextualTreatmentPlan, type AdaptiveClinicalQuestion } from '../utils/clinicalContextReasoning';
 
 type TabType = 'symptoms' | 'diseases' | 'ai';
 
@@ -113,22 +113,26 @@ const getIcdCode = (disease: string, idx: number): string => {
 };
 
 export const COMMON_SYMPTOMS = [
-  'Fever',
-  'Cough',
+  'Restlessness',
+  'Agitation',
+  'Palpitations',
   'Chest Pain',
-  'Headache',
   'Shortness of Breath',
-  'Abdominal Pain',
-  'Fatigue',
-  'Nausea & Vomiting',
+  'Fever',
+  'Headache',
   'Dizziness',
-  'Sore Throat',
-  'Diarrhea',
+  'Cough',
+  'Nausea',
+  'Abdominal Pain',
+  'Generalized Fatigue',
+  'Insomnia',
+  'Anxiety',
+  'Dysuria',
   'Joint Pain',
   'Skin Rash',
-  'Back Pain',
-  'Palpitations',
-  'Dysuria'
+  'Lower Back Pain',
+  'Tremors',
+  'Diaphoresis'
 ];
 
 export const LAB_RATIONALE_MAP: Record<string, string> = {
@@ -243,6 +247,20 @@ export const DiagnosticEngine: React.FC = () => {
   } | null>(null);
   const [transferToast, setTransferToast] = useState<string | null>(null);
 
+  // Symptoms Filter Mode ('all' vs 'common')
+  const [symptomsFilterMode, setSymptomsFilterMode] = useState<'all' | 'common'>('all');
+
+  // Adaptive Clinical Questionnaire State (Pre-Treatment Synthesis)
+  const [questionnaireState, setQuestionnaireState] = useState<{
+    active: boolean;
+    questions: AdaptiveClinicalQuestion[];
+    answers: Record<string, string>;
+  }>({
+    active: false,
+    questions: [],
+    answers: {}
+  });
+
   // Synthesize combined pathway from selected symptoms & diseases + patient context
   const handleSynthesizePathway = () => {
     if (selectedSymptoms.length === 0 && selectedDiseases.length === 0 && !aiPrompt) return;
@@ -256,18 +274,55 @@ export const DiagnosticEngine: React.FC = () => {
     const combinedPrompt = promptParts.join(' | ') || aiPrompt;
     setAiPrompt(combinedPrompt);
     setActiveTab('ai');
-    
-    // Auto run AI reasoning
+
+    // Generate Adaptive Clinical Questions based on Symptoms + Vitals + History
+    const dynamicQuestions = generateAdaptiveClinicalQuestions({
+      patient,
+      patientHistory,
+      soapNote,
+      inventory,
+      activeSymptoms: selectedSymptoms,
+      activeDiseases: selectedDiseases,
+      clinicalNotes: combinedPrompt
+    });
+
+    if (dynamicQuestions.length > 0) {
+      setQuestionnaireState({
+        active: true,
+        questions: dynamicQuestions,
+        answers: {}
+      });
+    } else {
+      executeClinicalSynthesis(combinedPrompt, {});
+    }
+  };
+
+  const handleSelectQuestionOption = (questionId: string, optionValue: string) => {
+    setQuestionnaireState(prev => ({
+      ...prev,
+      answers: {
+        ...prev.answers,
+        [questionId]: optionValue
+      }
+    }));
+  };
+
+  // Complete questionnaire and generate contextual treatment plan
+  const executeClinicalSynthesis = (customPrompt?: string, answersMap?: Record<string, string>) => {
+    const promptToUse = customPrompt || aiPrompt || 'Clinical Synthesis';
+    const effectiveAnswers = answersMap || questionnaireState.answers;
     setAiAnalyzing(true);
+    setQuestionnaireState(prev => ({ ...prev, active: false }));
+
     setTimeout(() => {
-      const isCardio = combinedPrompt.toLowerCase().includes('chest') || combinedPrompt.toLowerCase().includes('palpitat') || combinedPrompt.toLowerCase().includes('heart');
-      const isResp = combinedPrompt.toLowerCase().includes('cough') || combinedPrompt.toLowerCase().includes('breath') || combinedPrompt.toLowerCase().includes('stridor');
-      const isGI = combinedPrompt.toLowerCase().includes('abdom') || combinedPrompt.toLowerCase().includes('vomit') || combinedPrompt.toLowerCase().includes('diarrhea');
+      const isCardio = promptToUse.toLowerCase().includes('chest') || promptToUse.toLowerCase().includes('palpitat') || promptToUse.toLowerCase().includes('heart');
+      const isResp = promptToUse.toLowerCase().includes('cough') || promptToUse.toLowerCase().includes('breath') || promptToUse.toLowerCase().includes('stridor');
+      const isGI = promptToUse.toLowerCase().includes('abdom') || promptToUse.toLowerCase().includes('vomit') || promptToUse.toLowerCase().includes('diarrhea');
 
       let diffs = [
-        { name: 'Acute Bronchitis & Viral Syndrome', probability: 78, rationale: 'Cluster match across presenting respiratory & constitutional symptoms' },
-        { name: 'Atypical Community-Acquired Pneumonia', probability: 64, rationale: 'Fever with pulmonary complaint' },
-        { name: 'Post-Viral Reactive Airway Disease', probability: 42, rationale: 'Secondary bronchial hyperresponsiveness' },
+        { name: 'Acute Clinical Presentation & Symptom Cluster', probability: 78, rationale: 'Cluster match across presenting symptoms, vitals correlation, and clinical inquiry responses.' },
+        { name: 'Secondary Metabolic or Autonomic Response', probability: 54, rationale: 'Associated systemic or physiological compensation.' },
+        { name: 'Alternative Primary Differential', probability: 32, rationale: 'Rule out following initial lab testing.' },
       ];
       let questions = [
         'Have symptoms lasted greater than 5 days or worsened progressively?',
@@ -275,7 +330,7 @@ export const DiagnosticEngine: React.FC = () => {
         'Any known drug allergies or chronic steroid use?'
       ];
       let redFlags = ['SpO2 < 92% on room air', 'Tachypnea > 28 bpm', 'Cyanosis or altered mental status'];
-      let defaultLabs = ['CBC with Differential', 'Chest X-Ray (PA View)', 'C-Reactive Protein (CRP)'];
+      let defaultLabs = ['CBC with Differential', 'C-Reactive Protein (CRP)', 'Serum Electrolytes & Creatinine'];
 
       if (isCardio) {
         diffs = [
@@ -297,7 +352,7 @@ export const DiagnosticEngine: React.FC = () => {
         defaultLabs = ['Ultrasound Abdomen / Pelvis', 'CBC with Differential', 'Serum Electrolytes & Creatinine'];
       }
 
-      // Generate Patient Context-Aware Recommendations
+      // Generate Patient Context-Aware Recommendations with doctor questionnaire answers
       const contextualPlan = generateContextualTreatmentRecommendations({
         patient,
         patientHistory,
@@ -305,7 +360,8 @@ export const DiagnosticEngine: React.FC = () => {
         inventory,
         activeSymptoms: selectedSymptoms,
         activeDiseases: selectedDiseases,
-        clinicalNotes: combinedPrompt
+        clinicalNotes: promptToUse,
+        questionAnswers: effectiveAnswers
       });
 
       const combinedLabs = Array.from(new Set([
@@ -345,16 +401,17 @@ export const DiagnosticEngine: React.FC = () => {
     }, 600);
   };
 
-  // Group all 1600+ symptoms
+  // Group 500+ common or all 1900+ symptoms
   const symptomsByCategory = useMemo(() => {
+    const sourceList = symptomsFilterMode === 'common' ? MOST_COMMON_SYMPTOMS : ALL_SYMPTOMS;
     const map: Record<string, string[]> = {};
-    ALL_SYMPTOMS.forEach(s => {
+    sourceList.forEach(s => {
       const sys = getSymptomSystem(s);
       if (!map[sys]) map[sys] = [];
       map[sys].push(s);
     });
     return map;
-  }, []);
+  }, [symptomsFilterMode]);
 
   // Filter symptoms
   const filteredSymptoms = useMemo(() => {
@@ -545,6 +602,29 @@ export const DiagnosticEngine: React.FC = () => {
 
   // Run AI Clinical Reasoning Engine (incorporates active patient context)
   const handleRunAiAnalysis = () => {
+    if (!aiPrompt.trim()) return;
+    const dynamicQuestions = generateAdaptiveClinicalQuestions({
+      patient,
+      patientHistory,
+      soapNote,
+      inventory,
+      activeSymptoms: selectedSymptoms,
+      activeDiseases: selectedDiseases,
+      clinicalNotes: aiPrompt
+    });
+
+    if (dynamicQuestions.length > 0) {
+      setQuestionnaireState({
+        active: true,
+        questions: dynamicQuestions,
+        answers: {}
+      });
+    } else {
+      executeClinicalSynthesis(aiPrompt, {});
+    }
+  };
+
+  const handleRunAiAnalysisDirect = () => {
     if (!aiPrompt.trim()) return;
     setAiAnalyzing(true);
     setAiResult(null);
@@ -780,6 +860,33 @@ export const DiagnosticEngine: React.FC = () => {
               Clear
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Symptom Scope Toggle: All (1900+) vs 500+ Common */}
+      {activeTab === 'symptoms' && (
+        <div className="flex items-center gap-2 pb-1 text-xs">
+          <span className="text-[11px] font-semibold text-text-muted">Scope:</span>
+          <button
+            onClick={() => setSymptomsFilterMode('all')}
+            className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+              symptomsFilterMode === 'all'
+                ? 'bg-primary text-white shadow-xs'
+                : 'bg-canvas hover:bg-surface border border-border text-text-secondary'
+            }`}
+          >
+            All Symptoms ({totalSymptomsCount})
+          </button>
+          <button
+            onClick={() => setSymptomsFilterMode('common')}
+            className={`px-2.5 py-1 rounded-lg font-semibold transition-all flex items-center gap-1 ${
+              symptomsFilterMode === 'common'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
+                : 'bg-canvas hover:bg-surface border border-border text-text-secondary'
+            }`}
+          >
+            <span>🔥 500+ Most Common Symptoms ({MOST_COMMON_SYMPTOMS.length})</span>
+          </button>
         </div>
       )}
 
@@ -1084,6 +1191,7 @@ export const DiagnosticEngine: React.FC = () => {
         <div className="text-[11px] font-semibold text-text-muted">Instant Clinical Scenarios:</div>
         <div className="flex flex-wrap gap-2">
           {[
+            "Restlessness and palpitations in 52M with known diabetes and high blood pressure",
             "55M retrosternal chest pressure radiating to left arm with diaphoresis",
             "34F high fever, productive purulent cough, and right sided pleuritic chest pain",
             "22M acute severe right lower quadrant abdominal pain with rebound tenderness",
@@ -1094,11 +1202,126 @@ export const DiagnosticEngine: React.FC = () => {
               onClick={() => { setAiPrompt(prompt); }}
               className="px-2.5 py-1 text-[11px] bg-surface hover:bg-canvas border border-border rounded-full text-text-secondary hover:text-text-primary transition-colors text-left"
             >
-              "{prompt.slice(0, 48)}..."
+              "{prompt.slice(0, 52)}..."
             </button>
           ))}
         </div>
       </div>
+
+      {/* Adaptive Clinical Questions Stage (Pre-Treatment Inquiries) */}
+      {questionnaireState.active && questionnaireState.questions.length > 0 && (
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/10 via-surface to-teal-500/10 border-2 border-primary/40 shadow-lg space-y-4 animate-in fade-in duration-200">
+          <div className="flex items-center justify-between border-b border-primary/20 pb-3">
+            <div className="flex items-center gap-2">
+              <BrainCircuit className="w-5 h-5 text-primary" />
+              <div>
+                <h3 className="font-bold text-text-primary text-sm">Adaptive Pre-Treatment Clinical Inquiries</h3>
+                <p className="text-[11px] text-text-secondary">
+                  Please clarify these patient-specific factors before treatment synthesis (considering vitals &amp; history):
+                </p>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-bold">
+              {questionnaireState.questions.length} Questions
+            </span>
+          </div>
+
+          <div className="space-y-3.5">
+            {questionnaireState.questions.map((q, qIdx) => {
+              const selectedVal = questionnaireState.answers[q.id];
+              return (
+                <div key={q.id} className="p-3.5 rounded-xl bg-surface border border-border/80 space-y-2.5 shadow-2xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                          q.category === 'Red Flag Screening'
+                            ? 'bg-danger/10 text-danger border-danger/30'
+                            : q.category === 'Vitals Alert'
+                            ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                            : 'bg-primary/10 text-primary border-primary/30'
+                        }`}>
+                          {q.category}
+                        </span>
+                        {q.isUrgent && (
+                          <span className="text-[9px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.2 rounded border border-red-500/20">
+                            CRITICAL
+                          </span>
+                        )}
+                        <span className="text-[10px] text-text-muted">Q{qIdx + 1}</span>
+                      </div>
+                      <h4 className="font-bold text-xs text-text-primary">{q.question}</h4>
+                    </div>
+                  </div>
+
+                  {/* Rationale & Factor Badges */}
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                    <span className="text-text-muted bg-canvas px-2 py-0.5 rounded border border-border">
+                      💡 <strong>Rationale:</strong> {q.rationale}
+                    </span>
+                    {q.relevantFactors.map((rf, rfi) => (
+                      <span key={rfi} className="text-primary bg-primary/5 px-1.5 py-0.5 rounded border border-primary/20">
+                        {rf}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Options */}
+                  <div className="grid grid-cols-1 gap-1.5 pt-1">
+                    {q.options.map((opt) => {
+                      const isOptionSelected = selectedVal === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => handleSelectQuestionOption(q.id, opt.value)}
+                          className={`w-full text-left p-2.5 rounded-lg text-xs transition-all border flex items-start justify-between gap-2 cursor-pointer ${
+                            isOptionSelected
+                              ? 'bg-primary/15 border-primary text-primary font-bold shadow-xs'
+                              : 'bg-canvas hover:bg-surface border-border text-text-secondary hover:border-primary/40'
+                          }`}
+                        >
+                          <div className="space-y-0.5 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border text-[9px] ${
+                                isOptionSelected ? 'bg-primary text-white border-primary' : 'border-border'
+                              }`}>
+                                {isOptionSelected ? '✓' : ''}
+                              </span>
+                              <span>{opt.label}</span>
+                            </div>
+                            {opt.clinicalImpact && (
+                              <p className="text-[10px] text-text-muted pl-5 font-normal">
+                                ➔ {opt.clinicalImpact}
+                              </p>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-primary/20">
+            <button
+              onClick={() => executeClinicalSynthesis(aiPrompt, {})}
+              className="px-3 py-1.5 text-xs text-text-muted hover:text-text-primary rounded-lg border border-border bg-canvas transition-colors"
+            >
+              Skip Questions (Use Baseline Vitals)
+            </button>
+
+            <button
+              onClick={() => executeClinicalSynthesis(aiPrompt)}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md shadow-primary/25 cursor-pointer transition-all"
+            >
+              <Sparkles size={14} />
+              <span>Apply Answers &amp; Generate Contextual Treatment</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* AI Results Rendering */}
       {aiResult && (
