@@ -250,15 +250,17 @@ export const DiagnosticEngine: React.FC = () => {
   // Symptoms Filter Mode ('all' vs 'common')
   const [symptomsFilterMode, setSymptomsFilterMode] = useState<'all' | 'common'>('all');
 
-  // Adaptive Clinical Questionnaire State (Pre-Treatment Synthesis)
+  // Adaptive Clinical Questionnaire State (Pre-Treatment Synthesis with Sentence NLP)
   const [questionnaireState, setQuestionnaireState] = useState<{
     active: boolean;
     questions: AdaptiveClinicalQuestion[];
     answers: Record<string, string>;
+    freeTextObservations: string;
   }>({
     active: false,
     questions: [],
-    answers: {}
+    answers: {},
+    freeTextObservations: ''
   });
 
   // Synthesize combined pathway from selected symptoms & diseases + patient context
@@ -290,7 +292,8 @@ export const DiagnosticEngine: React.FC = () => {
       setQuestionnaireState({
         active: true,
         questions: dynamicQuestions,
-        answers: {}
+        answers: {},
+        freeTextObservations: ''
       });
     } else {
       executeClinicalSynthesis(combinedPrompt, {});
@@ -308,9 +311,10 @@ export const DiagnosticEngine: React.FC = () => {
   };
 
   // Complete questionnaire and generate contextual treatment plan
-  const executeClinicalSynthesis = (customPrompt?: string, answersMap?: Record<string, string>) => {
+  const executeClinicalSynthesis = (customPrompt?: string, answersMap?: Record<string, string>, sentenceNotes?: string) => {
     const promptToUse = customPrompt || aiPrompt || 'Clinical Synthesis';
     const effectiveAnswers = answersMap || questionnaireState.answers;
+    const effectiveSentenceNotes = sentenceNotes !== undefined ? sentenceNotes : questionnaireState.freeTextObservations;
     setAiAnalyzing(true);
     setQuestionnaireState(prev => ({ ...prev, active: false }));
 
@@ -352,7 +356,7 @@ export const DiagnosticEngine: React.FC = () => {
         defaultLabs = ['Ultrasound Abdomen / Pelvis', 'CBC with Differential', 'Serum Electrolytes & Creatinine'];
       }
 
-      // Generate Patient Context-Aware Recommendations with doctor questionnaire answers
+      // Generate Patient Context-Aware Recommendations with doctor questionnaire answers and free-form sentences
       const contextualPlan = generateContextualTreatmentRecommendations({
         patient,
         patientHistory,
@@ -361,7 +365,8 @@ export const DiagnosticEngine: React.FC = () => {
         activeSymptoms: selectedSymptoms,
         activeDiseases: selectedDiseases,
         clinicalNotes: promptToUse,
-        questionAnswers: effectiveAnswers
+        questionAnswers: effectiveAnswers,
+        freeTextObservations: effectiveSentenceNotes
       });
 
       const combinedLabs = Array.from(new Set([
@@ -617,7 +622,8 @@ export const DiagnosticEngine: React.FC = () => {
       setQuestionnaireState({
         active: true,
         questions: dynamicQuestions,
-        answers: {}
+        answers: {},
+        freeTextObservations: ''
       });
     } else {
       executeClinicalSynthesis(aiPrompt, {});
@@ -1266,15 +1272,15 @@ export const DiagnosticEngine: React.FC = () => {
                     ))}
                   </div>
 
-                  {/* Options */}
-                  <div className="grid grid-cols-1 gap-1.5 pt-1">
+                  {/* Quick Select Option Pills */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
                     {q.options.map((opt) => {
-                      const isOptionSelected = selectedVal === opt.value;
+                      const isOptionSelected = selectedVal === opt.value || selectedVal === opt.label;
                       return (
                         <button
                           key={opt.value}
-                          onClick={() => handleSelectQuestionOption(q.id, opt.value)}
-                          className={`w-full text-left p-2.5 rounded-lg text-xs transition-all border flex items-start justify-between gap-2 cursor-pointer ${
+                          onClick={() => handleSelectQuestionOption(q.id, opt.label)}
+                          className={`w-full text-left p-2 rounded-lg text-[11px] transition-all border flex items-start justify-between gap-1.5 cursor-pointer ${
                             isOptionSelected
                               ? 'bg-primary/15 border-primary text-primary font-bold shadow-xs'
                               : 'bg-canvas hover:bg-surface border-border text-text-secondary hover:border-primary/40'
@@ -1290,7 +1296,7 @@ export const DiagnosticEngine: React.FC = () => {
                               <span>{opt.label}</span>
                             </div>
                             {opt.clinicalImpact && (
-                              <p className="text-[10px] text-text-muted pl-5 font-normal">
+                              <p className="text-[9px] text-text-muted pl-5 font-normal">
                                 ➔ {opt.clinicalImpact}
                               </p>
                             )}
@@ -1299,14 +1305,45 @@ export const DiagnosticEngine: React.FC = () => {
                       );
                     })}
                   </div>
+
+                  {/* Free-Text Natural Sentence Answer Input */}
+                  <div className="pt-1.5">
+                    <label className="block text-[10px] font-bold text-text-muted mb-1 flex items-center gap-1">
+                      <span>✍️ Or type / dictate response in full sentences:</span>
+                      <span className="text-teal-600 lowercase font-normal">(clinical NLP parsed)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={selectedVal || ''}
+                      onChange={(e) => handleSelectQuestionOption(q.id, e.target.value)}
+                      placeholder="e.g. Patient has severe diaphoresis, jitteriness and POC glucose was 64 mg/dL..."
+                      className="w-full px-3 py-1.5 bg-canvas border border-border focus:border-primary rounded-lg text-xs text-text-primary placeholder:text-text-faint"
+                    />
+                  </div>
                 </div>
               );
             })}
           </div>
 
+          {/* Clinician Global Sentence Observations Box */}
+          <div className="p-3.5 rounded-xl bg-surface border border-teal-500/30 space-y-1.5">
+            <label className="block text-xs font-bold text-teal-700 dark:text-teal-400 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <FileText size={14} /> Additional Clinical Findings / Free-Form Sentence Observations:
+              </span>
+              <span className="text-[10px] text-text-muted font-normal">Optional natural language input</span>
+            </label>
+            <textarea
+              value={questionnaireState.freeTextObservations}
+              onChange={(e) => setQuestionnaireState(prev => ({ ...prev, freeTextObservations: e.target.value }))}
+              placeholder="Describe any other clinical nuances in full sentences (e.g. 'Patient pacing restlessly after metoclopramide injection, BP 160/95, denies chest pain, glucose normal')..."
+              className="w-full h-18 p-2.5 bg-canvas border border-border rounded-lg text-xs text-text-primary resize-none focus:outline-none focus:border-primary placeholder:text-text-faint"
+            />
+          </div>
+
           <div className="flex items-center justify-between pt-2 border-t border-primary/20">
             <button
-              onClick={() => executeClinicalSynthesis(aiPrompt, {})}
+              onClick={() => executeClinicalSynthesis(aiPrompt, {}, '')}
               className="px-3 py-1.5 text-xs text-text-muted hover:text-text-primary rounded-lg border border-border bg-canvas transition-colors"
             >
               Skip Questions (Use Baseline Vitals)
@@ -1317,7 +1354,7 @@ export const DiagnosticEngine: React.FC = () => {
               className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md shadow-primary/25 cursor-pointer transition-all"
             >
               <Sparkles size={14} />
-              <span>Apply Answers &amp; Generate Contextual Treatment</span>
+              <span>Process Sentence Inquiries &amp; Generate Treatment</span>
             </button>
           </div>
         </div>

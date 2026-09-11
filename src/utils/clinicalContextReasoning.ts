@@ -86,6 +86,200 @@ export interface ClinicalContextInput {
   activeDiseases?: string[];
   clinicalNotes?: string;
   questionAnswers?: Record<string, string>;
+  freeTextObservations?: string;
+}
+
+export interface ParsedClinicalSentenceInsights {
+  extractedKeywords: string[];
+  findings: Array<{ topic: string; detail: string; severity?: 'STAT' | 'Urgent' | 'Routine' }>;
+  hypoglycemiaSuspected: boolean;
+  thyrotoxicosisSuspected: boolean;
+  acutePanicSuspected: boolean;
+  akathisiaSuspected: boolean;
+  acuteCoronarySyndromeSuspected: boolean;
+  pleuriticChestPain: boolean;
+  gerdRefluxSuspected: boolean;
+  musculoskeletalPain: boolean;
+  bronchospasmSuspected: boolean;
+  pneumoniaSuspected: boolean;
+  cardiacEdemaSuspected: boolean;
+  giBleedSuspected: boolean;
+  appendicitisSuspected: boolean;
+  thunderclapSuspected: boolean;
+  migraineSuspected: boolean;
+  tensionHeadacheSuspected: boolean;
+  meningismSuspected: boolean;
+  pyelonephritisSuspected: boolean;
+  lowerUtiSuspected: boolean;
+  renalColicSuspected: boolean;
+  extractedBloodSugar?: number;
+  extractedBloodPressure?: string;
+  extractedTemperature?: number;
+}
+
+/**
+ * Natural Language Clinical Sentence Processor
+ * Parses free-form sentence answers and clinician notes for diagnostic findings,
+ * physiological parameters, red flags, and therapeutic targets.
+ */
+export function parseClinicalSentenceInquiries(
+  answersMap: Record<string, string> = {},
+  freeTextObservations: string = ''
+): ParsedClinicalSentenceInsights {
+  const combinedText = Object.values(answersMap).concat(freeTextObservations).join(' ').toLowerCase();
+  
+  const has = (...terms: string[]) => terms.some(t => combinedText.includes(t.toLowerCase()));
+
+  // Extract explicit glucose values e.g. "sugar was 65", "cbg 62 mg/dl", "rbs 58"
+  let extractedBloodSugar: number | undefined;
+  const sugarMatch = combinedText.match(/(?:sugar|glucose|cbg|rbs|dextrostix)[^\d]*(\d{2,3})/i);
+  if (sugarMatch && sugarMatch[1]) {
+    extractedBloodSugar = parseInt(sugarMatch[1], 10);
+  }
+
+  // Extract explicit BP e.g. "bp 170/100", "160/95 mmhg"
+  let extractedBloodPressure: string | undefined;
+  const bpMatch = combinedText.match(/(\d{2,3}\/\d{2,3})/);
+  if (bpMatch && bpMatch[1]) {
+    extractedBloodPressure = bpMatch[1];
+  }
+
+  // Extract explicit temperature e.g. "temp 39.2", "fever 38.8 c"
+  let extractedTemperature: number | undefined;
+  const tempMatch = combinedText.match(/(?:temp|fever|temperature)[^\d]*(\d{2}(?:\.\d)?)/i);
+  if (tempMatch && tempMatch[1]) {
+    extractedTemperature = parseFloat(tempMatch[1]);
+  }
+
+  const hypoglycemiaSuspected = 
+    (extractedBloodSugar !== undefined && extractedBloodSugar < 70) ||
+    has('hypoglycemia', 'hypoglycemic', 'low sugar', 'sugar dropped', 'cold sweat', 'sweating with hunger', 'jittery', 'trembling with hunger', 'sweaty and confused', 'hypoglycemia_suspected', 'check_cbg_now');
+
+  const thyrotoxicosisSuspected = 
+    has('thyroid', 'thyrotoxic', 'hyperthyroid', 'goiter', 'heat intolerance', 'fine tremor', 'thyrotoxic_features', 'graves');
+
+  const acutePanicSuspected = 
+    has('panic', 'hyperventilat', 'impending doom', 'air hunger with tingling', 'acute anxiety peak', 'acute_panic_state', 'anxiety_insomnia', 'nervous breakdown');
+
+  const akathisiaSuspected = 
+    has('akathisia', 'inner restlessness', 'cannot sit still', 'urge to pace', 'motor restlessness', 'motor_akathisia', 'drug induced restlessness', 'after metoclopramide', 'after haloperidol', 'after antiemetic');
+
+  const acuteCoronarySyndromeSuspected = 
+    has('crushing', 'retrosternal pressure', 'radiating to left arm', 'radiating to jaw', 'worse on exertion', 'heavy chest pressure', 'typical angina', 'typical_acs', 'relieved with nitrate', 'sublingual angised', 'tight band across chest');
+
+  const pleuriticChestPain = 
+    has('pleuritic', 'sharp chest pain on deep breath', 'worse with inspiration', 'worse lying flat', 'relieved leaning forward', 'pericarditis', 'pleuritic_chest_pain');
+
+  const gerdRefluxSuspected = 
+    has('burning retrosternal', 'acid reflux', 'heartburn', 'sour burp', 'waterbrash', 'worse after lying down', 'gerd_reflux_pain', 'peptic_dyspepsia');
+
+  const musculoskeletalPain = 
+    has('costochondritis', 'wall tenderness', 'tender on palpation', 'musculoskeletal_chest_pain', 'pain on pressing ribs');
+
+  const bronchospasmSuspected = 
+    has('wheezing', 'audible wheeze', 'bronchospasm', 'tight chest with whistling', 'asthma exacerbation', 'bronchospasm_wheeze', 'prolonged expiration');
+
+  const pneumoniaSuspected = 
+    has('productive cough', 'yellow sputum', 'green sputum', 'rusty sputum', 'crepitations', 'lung crackles', 'consolidation', 'infectious_pneumonia', 'lobar pneumonia', 'bacterial bronchitis');
+
+  const cardiacEdemaSuspected = 
+    has('orthopnea', 'pnd', 'paroxysmal nocturnal', 'bilateral leg swelling', 'pedal edema', 'cannot lie flat without choking', 'cardiac_pulmonary_edema', 'heart failure congestion');
+
+  const giBleedSuspected = 
+    has('melena', 'black tarry stool', 'hematemesis', 'coffee ground', 'vomiting blood', 'blood in stool', 'gi_alarm_bleed', 'rigid abdomen', 'peritonitis');
+
+  const appendicitisSuspected = 
+    has('rlq', 'right lower quadrant', 'mcburney', 'rebound tenderness', 'pain moved from navel', 'suspected_appendicitis', 'guarding in right fossa');
+
+  const thunderclapSuspected = 
+    has('thunderclap', 'worst headache of life', 'explosive headache', 'thunderclap_red_flag', 'subarachnoid', 'sudden severe occipital burst');
+
+  const migraineSuspected = 
+    has('unilateral throbbing', 'migraine', 'visual aura', 'photophobia and phonophobia', 'migraine_episode', 'one sided pulsing head pain');
+
+  const tensionHeadacheSuspected = 
+    has('tension headache', 'band like pressure', 'tight band around forehead', 'tension_headache', 'stress headache');
+
+  const meningismSuspected = 
+    has('neck stiffness', 'nuchal rigidity', 'photophobia with fever', 'meningism_delirium', 'kernig', 'brudzinski', 'meningitis signs', 'delirium with high temp');
+
+  const pyelonephritisSuspected = 
+    has('pyelonephritis', 'costovertebral angle tenderness', 'cva tenderness', 'high fever with flank pain', 'kidney infection');
+
+  const lowerUtiSuspected = 
+    has('dysuria without fever', 'burning urination', 'frequency and urgency', 'lower_uti', 'cystitis');
+
+  const renalColicSuspected = 
+    has('renal colic', 'loin to groin pain', 'colicky flank pain', 'microscopic hematuria', 'kidney stone');
+
+  // Build structured findings
+  const findings: Array<{ topic: string; detail: string; severity?: 'STAT' | 'Urgent' | 'Routine' }> = [];
+  const extractedKeywords: string[] = [];
+
+  if (hypoglycemiaSuspected) {
+    findings.push({ topic: 'Hypoglycemia Alert', detail: extractedBloodSugar ? `Blood glucose critically measured at ${extractedBloodSugar} mg/dL` : 'Clinical signs of acute neuroglycopenia detected in clinician inquiry', severity: 'STAT' });
+    extractedKeywords.push('Hypoglycemia');
+  }
+  if (acuteCoronarySyndromeSuspected) {
+    findings.push({ topic: 'Acute Coronary Syndrome', detail: 'Typical exertional / anginal crushing pain with classic radiation pattern documented', severity: 'STAT' });
+    extractedKeywords.push('Typical ACS');
+  }
+  if (thunderclapSuspected) {
+    findings.push({ topic: 'Thunderclap Headache Red Flag', detail: 'Explosive maximum intensity onset suspicious for Subarachnoid Hemorrhage', severity: 'STAT' });
+    extractedKeywords.push('Thunderclap SAH Risk');
+  }
+  if (meningismSuspected) {
+    findings.push({ topic: 'Meningeal Irritation Alert', detail: 'Nuchal rigidity, photophobia, or delirium present in febrile state', severity: 'STAT' });
+    extractedKeywords.push('Meningeal Irritation');
+  }
+  if (giBleedSuspected) {
+    findings.push({ topic: 'Upper GI Bleeding Alarm', detail: 'Documented melena / hematemesis or involuntary peritoneal guarding', severity: 'STAT' });
+    extractedKeywords.push('GI Bleed Alarm');
+  }
+  if (thyrotoxicosisSuspected) {
+    findings.push({ topic: 'Adrenergic Storm / Thyrotoxicosis', detail: 'Tachycardia, heat intolerance, and fine tremor indicating hyperadrenergic state', severity: 'Urgent' });
+    extractedKeywords.push('Thyrotoxicosis');
+  }
+  if (akathisiaSuspected) {
+    findings.push({ topic: 'Drug-Induced Akathisia', detail: 'Inner motor restlessness and compulsion to pace after dopamine antagonist / antiemetic', severity: 'Urgent' });
+    extractedKeywords.push('Akathisia');
+  }
+  if (bronchospasmSuspected) {
+    findings.push({ topic: 'Reactive Bronchospasm', detail: 'Audible expiratory wheezing and tight airways requiring immediate bronchodilation', severity: 'Urgent' });
+    extractedKeywords.push('Bronchospasm');
+  }
+  if (pneumoniaSuspected) {
+    findings.push({ topic: 'Bacterial LRTI / Pneumonia', detail: 'Purulent/rusty sputum with febrile consolidation and crackles', severity: 'Urgent' });
+    extractedKeywords.push('Bacterial Pneumonia');
+  }
+
+  return {
+    extractedKeywords,
+    findings,
+    hypoglycemiaSuspected,
+    thyrotoxicosisSuspected,
+    acutePanicSuspected,
+    akathisiaSuspected,
+    acuteCoronarySyndromeSuspected,
+    pleuriticChestPain,
+    gerdRefluxSuspected,
+    musculoskeletalPain,
+    bronchospasmSuspected,
+    pneumoniaSuspected,
+    cardiacEdemaSuspected,
+    giBleedSuspected,
+    appendicitisSuspected,
+    thunderclapSuspected,
+    migraineSuspected,
+    tensionHeadacheSuspected,
+    meningismSuspected,
+    pyelonephritisSuspected,
+    lowerUtiSuspected,
+    renalColicSuspected,
+    extractedBloodSugar,
+    extractedBloodPressure,
+    extractedTemperature
+  };
 }
 
 /**
@@ -366,8 +560,12 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
     activeSymptoms = [],
     activeDiseases = [],
     clinicalNotes = '',
-    questionAnswers = {}
+    questionAnswers = {},
+    freeTextObservations = ''
   } = input;
+
+  // 0. Parse Free-Form Sentences & Clinician Written Inquiries
+  const sentenceInsights = parseClinicalSentenceInquiries(questionAnswers, `${clinicalNotes} ${freeTextObservations}`);
 
   // ---------------------------------------------------------
   // 1. Analyze Patient Demographics & Age / Weight
@@ -481,13 +679,19 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
   if (examText.includes('tender')) soapFindings.push('Physical Exam: Localized tenderness identified');
   if (examText.includes('edema')) soapFindings.push('Physical Exam: Peripheral pedal edema present');
 
-  // Incorporate doctor answers to dynamic questions
+  // Incorporate doctor answers & sentence insights
   const questionnaireInsights: string[] = [];
   for (const [qKey, answerVal] of Object.entries(questionAnswers)) {
     if (answerVal) {
-      questionnaireInsights.push(`${qKey}: ${answerVal}`);
+      questionnaireInsights.push(`Response (${qKey}): "${answerVal}"`);
     }
   }
+  if (freeTextObservations) {
+    questionnaireInsights.push(`Clinician Sentence Note: "${freeTextObservations}"`);
+  }
+  sentenceInsights.findings.forEach(f => {
+    questionnaireInsights.push(`[Sentence NLP Extracted] ${f.topic}: ${f.detail}`);
+  });
 
   // ---------------------------------------------------------
   // 5. Track Contraindications & Withheld Meds
@@ -629,15 +833,17 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
 
   // ---------------------------------------------------------
   // Clinical Rule: Restlessness, Agitation, Anxiety, Insomnia
+  // Synthesizes Vitals + Comorbidities + Free-Text Sentence Clinical Inputs
   // ---------------------------------------------------------
-  const isRestless = notesCombined.includes('restless') || notesCombined.includes('agitat') || notesCombined.includes('anxiety') || notesCombined.includes('panic') || notesCombined.includes('insomnia') || notesCombined.includes('akathisia');
-  const answeredHypo = questionAnswers['q_restless_hypo'] === 'hypoglycemia_suspected' || questionAnswers['q_restless_hypo'] === 'check_cbg_now';
-  const answeredThyro = questionAnswers['q_restless_tachy'] === 'thyrotoxic_features';
-  const answeredPanic = questionAnswers['q_restless_tachy'] === 'acute_panic_state' || questionAnswers['q_restless_general'] === 'anxiety_insomnia';
-  const answeredAkathisia = questionAnswers['q_restless_general'] === 'motor_akathisia';
+  const isRestless = notesCombined.includes('restless') || notesCombined.includes('agitat') || notesCombined.includes('anxiety') || notesCombined.includes('panic') || notesCombined.includes('insomnia') || notesCombined.includes('akathisia') || sentenceInsights.hypoglycemiaSuspected || sentenceInsights.thyrotoxicosisSuspected || sentenceInsights.akathisiaSuspected;
+  
+  const isHypo = sentenceInsights.hypoglycemiaSuspected || questionAnswers['q_restless_hypo'] === 'hypoglycemia_suspected' || questionAnswers['q_restless_hypo'] === 'check_cbg_now';
+  const isThyro = sentenceInsights.thyrotoxicosisSuspected || questionAnswers['q_restless_tachy'] === 'thyrotoxic_features';
+  const isPanic = sentenceInsights.acutePanicSuspected || questionAnswers['q_restless_tachy'] === 'acute_panic_state' || questionAnswers['q_restless_general'] === 'anxiety_insomnia';
+  const isAkathisia = sentenceInsights.akathisiaSuspected || questionAnswers['q_restless_general'] === 'motor_akathisia';
 
-  if (isRestless || answeredHypo || answeredPanic || answeredThyro || answeredAkathisia) {
-    if (answeredHypo || hasDM) {
+  if (isRestless || isHypo || isPanic || isThyro || isAkathisia) {
+    if (isHypo || hasDM) {
       supportiveTreatments.push({
         title: 'STAT Capillary Blood Glucose (CBG) Protocol',
         detail: 'Immediately check POC glucose. If CBG < 70 mg/dL, administer 15-20g fast-acting oral carbohydrates or IV 25% Dextrose (50ml).',
@@ -651,7 +857,7 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
       });
     }
 
-    if (answeredThyro || (isTachycardic && !hasAsthma)) {
+    if (isThyro || (isTachycardic && !hasAsthma)) {
       addMed({
         genericName: 'Propranolol HCl',
         brandName: 'Inderal',
@@ -677,7 +883,7 @@ export function generateContextualTreatmentRecommendations(input: ClinicalContex
       });
     }
 
-    if (answeredPanic || (!hasDM && !answeredThyro)) {
+    if (isPanic || isAkathisia || (!hasDM && !isThyro)) {
       addMed({
         genericName: 'Alprazolam',
         brandName: 'Xanax',
